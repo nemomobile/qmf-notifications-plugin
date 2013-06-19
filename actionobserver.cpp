@@ -101,9 +101,9 @@ void RunningAction::activityChanged(QMailServiceAction::Activity activity)
 void RunningAction::progressChanged(uint value, uint total)
 {
     if (value < total) {
-        qreal percent = ((value * 100) / total) * 0.01;
+        qreal percent = qBound(0.0, (qreal)value / (qreal)total, 1.0);
         // Avoid spamming transfer-ui
-        if (percent > _progress + 0.05) {
+        if (percent > _progress + 0.05 || percent == 1) {
             _progress = percent;
             if (_runningInTransferEngine) {
                 _transferClient->updateTransferProgress(_transferId, _progress);
