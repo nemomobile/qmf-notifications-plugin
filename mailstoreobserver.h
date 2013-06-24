@@ -30,31 +30,52 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
  */
 
-#ifndef NOTIFICATIONSPLUGIN_H
-#define NOTIFICATIONSPLUGIN_H
+#ifndef MAILSTOREOBSERVER_H
+#define MAILSTOREOBSERVER_H
 
-#include "actionobserver.h"
-#include "mailstoreobserver.h"
-#include <QtPlugin>
-#include <qmailmessageserverplugin.h>
+#include <QObject>
+#include <QSharedPointer>
+#include <qmailstore.h>
+#include <notification.h>
 
-class NotificationsPlugin : public QMailMessageServerPlugin
+struct MessageInfo
 {
-    Q_OBJECT
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 0, 0))
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.NotificationsPluginHandlerFactoryInterface")
-#endif
-public:
-    NotificationsPlugin(QObject *parent = 0);
-    ~NotificationsPlugin();
-
-    virtual QString key() const;
-    virtual void exec();
-    virtual NotificationsPlugin* createService();
-
-private:
-    ActionObserver *_actionObserver;
-    MailStoreObserver *_mailStoreObserver;
+    QMailMessageId id;
+    QString sender;
+    QString subject;
+    QDateTime timeStamp;
+    QMailAccountId accountId;
 };
 
-#endif // NOTIFICATIONSPLUGIN_H
+class MailStoreObserver : public QObject
+{
+    Q_OBJECT
+public:
+    explicit MailStoreObserver(QObject *parent = 0);
+
+private slots:
+    void actionsCompleted();
+    void addMessages(const QMailMessageIdList &ids);
+    void removeMessages(const QMailMessageIdList &ids);
+    void updateMessages(const QMailMessageIdList &ids);
+    
+private:
+    int _newMessagesCount;
+    int _publishedItemCount;
+    int _oldMessagesCount;
+    uint _replacesId;
+    QMailStore *_storage;
+    Notification *_notification;
+    QHash<QMailMessageId, QSharedPointer<MessageInfo> > _publishedMessageList;
+
+    void closeNotifications();
+    MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);
+    QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
+    bool notifyMessage(const QMailMessageMetaData &message);
+    void reformatNotification(bool notify, int newCount);
+    void publishNotification();
+    bool publishedNotification();
+    void updateNotificationCount();
+};
+
+#endif // MAILSTOREOBSERVER_H
