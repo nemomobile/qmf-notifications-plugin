@@ -36,6 +36,7 @@
 MailStoreObserver::MailStoreObserver(QObject *parent) :
     QObject(parent),
     _newMessagesCount(0),
+    _publishedItemCount(0),
     _oldMessagesCount(0),
     _replacesId(0),
     _notification(new Notification(this))
@@ -123,8 +124,12 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         Q_ASSERT(_publishedMessageList.size() == 1);
         QSharedPointer<MessageInfo> msgInfo = messageInfo();
         // If is a need message just added, notify the user.
-        if (notify)
+        if (notify) {
             _notification->setPreviewBody(msgInfo.data()->subject);
+            _notification->setPreviewSummary(msgInfo.data()->sender);
+        } else {
+            _notification->setPreviewSummary(QString());
+        }
         _notification->setSummary(msgInfo.data()->sender);
         _notification->setBody(msgInfo.data()->subject);
         _notification->setTimestamp(msgInfo.data()->timeStamp);
@@ -161,8 +166,10 @@ bool MailStoreObserver::publishedNotification()
         Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(0));
         _replacesId = publishedNotification->replacesId();
         _publishedItemCount = publishedNotification->itemCount();
+        _notification->setReplacesId(_replacesId);
         return true;
     } else {
+         _publishedItemCount = 0;
         return false;
     }
 }
@@ -171,14 +178,8 @@ bool MailStoreObserver::publishedNotification()
 
 void MailStoreObserver::actionsCompleted()
 {
-    if (_newMessagesCount > 0 || _oldMessagesCount > 0) {
-        // If there's a email notification already, replace it
-        if (publishedNotification()) {
-            _notification->setReplacesId(_replacesId);
-        } else {
-            _publishedItemCount = 0;
-        }
-    }
+    // if there's already a published notification use it
+    publishedNotification();
 
     if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
         Q_ASSERT(_publishedItemCount >= _oldMessagesCount);
