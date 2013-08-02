@@ -71,7 +71,9 @@ private:
 
     void closeNotifications();
     MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);
+    QDateTime lastestPublishedMessageTimeStamp();
     QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
+    bool notificationsFromMutipleAccounts();
     bool notifyMessage(const QMailMessageMetaData &message);
     void reformatNotification(bool notify, int newCount);
     void reformatPublishedMessages();

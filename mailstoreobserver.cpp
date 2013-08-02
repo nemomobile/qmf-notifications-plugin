@@ -94,6 +94,17 @@ MessageInfo* MailStoreObserver::constructMessageInfo(const QMailMessageMetaData 
     return messageInfo;
 }
 
+QDateTime MailStoreObserver::lastestPublishedMessageTimeStamp()
+{
+    QDateTime lastestTimeStamp;
+    foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList) {
+        if (msgInfo->timeStamp >= lastestTimeStamp) {
+            lastestTimeStamp = msgInfo->timeStamp;
+        }
+    }
+    return lastestTimeStamp;
+}
+
 // Returns messageInfo object from the list of published messages
 QSharedPointer<MessageInfo> MailStoreObserver::messageInfo(const QMailMessageId id)
 {
@@ -105,6 +116,22 @@ QSharedPointer<MessageInfo> MailStoreObserver::messageInfo(const QMailMessageId 
         Q_ASSERT(_publishedMessageList.contains(id));
         return _publishedMessageList.value(id);
     }
+}
+
+// Check if we have messages from more than one account
+bool MailStoreObserver::notificationsFromMutipleAccounts()
+{
+    uint accountId = 0;
+    foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList) {
+        if (accountId == 0) {
+            accountId = msgInfo->accountId.toULongLong();
+        } else {
+            if (accountId != msgInfo->accountId.toULongLong()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // Check if this message should be notified
@@ -155,8 +182,16 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         }
         _notification->setPreviewBody(QString());
         _notification->setBody(QString());
-        _notification->setRemoteDBusCallMethodName("openCombinedInbox");
-        _notification->setRemoteDBusCallArguments(QVariantList());
+        _notification->setTimestamp(lastestPublishedMessageTimeStamp());
+
+        if (notificationsFromMutipleAccounts()) {
+            _notification->setRemoteDBusCallMethodName("openCombinedInbox");
+            _notification->setRemoteDBusCallArguments(QVariantList());
+        } else {
+            QSharedPointer<MessageInfo> msgInfo = messageInfo();
+            _notification->setRemoteDBusCallMethodName("openInbox");
+            _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->accountId.toULongLong())));
+        }
     }
     _notification->setItemCount(newCount);
     _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
