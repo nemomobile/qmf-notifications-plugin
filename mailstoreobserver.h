@@ -64,6 +64,7 @@ private:
     int _publishedItemCount;
     int _oldMessagesCount;
     uint _replacesId;
+    QString _publishedMessages;
     QMailStore *_storage;
     Notification *_notification;
     QHash<QMailMessageId, QSharedPointer<MessageInfo> > _publishedMessageList;
@@ -73,6 +74,8 @@ private:
     QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
     bool notifyMessage(const QMailMessageMetaData &message);
     void reformatNotification(bool notify, int newCount);
+    void reformatPublishedMessages();
+    QString publishedMessageIds();
     void publishNotification();
     bool publishedNotification();
     void updateNotificationCount();

@@ -44,6 +44,9 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     qDebug() << "Store observer initialized";
     _storage = QMailStore::instance();
     _notification->setCategory("x-nemo.email");
+    _notification->setRemoteDBusCallServiceName("com.jolla.email.ui");
+    _notification->setRemoteDBusCallObjectPath("/com/jolla/email/ui");
+    _notification->setRemoteDBusCallInterface("com.jolla.email.ui");
 
     connect(_storage, SIGNAL(messagesAdded(const QMailMessageIdList&)),
             this, SLOT(addMessages(const QMailMessageIdList&)));
@@ -52,13 +55,18 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     connect(_storage, SIGNAL(messagesRemoved(const QMailMessageIdList&)),
             this, SLOT(removeMessages(const QMailMessageIdList&)));
 
-    // If something goes wrong (e.g crash), we close any existent notification.
-    // In order to keep proper states, notifications framework would need
-    // to save a list of ids per notification, and then we could know on
-    // start what is published.
+    // If something goes wrong (e.g crash), we keep proper states,
+    // if there is a published notification it will be reformated.
     if (publishedNotification()) {
-        qDebug() << "Closing notification " << _replacesId;
-        closeNotifications();
+        if (!_publishedMessages.isEmpty()) {
+            qDebug() << "Reformating published messages " <<  _publishedMessages;
+            reformatPublishedMessages();
+        } else {
+            qDebug() << "Closing notification " << _replacesId;
+            closeNotifications();
+        }
+    } else {
+        qDebug() << "No published notification";
     }
 
 }
@@ -121,6 +129,7 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         return;
         // Only one new message use message sender and subject
     } else if (newCount == 1) {
+        // TODO CHECK IF THIS CAN HAPPEN, e.g message status fails to change.
         Q_ASSERT(_publishedMessageList.size() == 1);
         QSharedPointer<MessageInfo> msgInfo = messageInfo();
         // If is a need message just added, notify the user.
@@ -133,6 +142,8 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         _notification->setSummary(msgInfo.data()->sender);
         _notification->setBody(msgInfo.data()->subject);
         _notification->setTimestamp(msgInfo.data()->timeStamp);
+        _notification->setRemoteDBusCallMethodName("openMessage");
+        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
     } else {
         QString summary = QString("%1 New email(s)").arg(newCount);
         _notification->setSummary(summary);
@@ -144,9 +155,11 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         }
         _notification->setPreviewBody(QString());
         _notification->setBody(QString());
-
+        _notification->setRemoteDBusCallMethodName("openCombinedInbox");
+        _notification->setRemoteDBusCallArguments(QVariantList());
     }
     _notification->setItemCount(newCount);
+    _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
     _notification->publish();
 
     //reset count
@@ -154,6 +167,33 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         _newMessagesCount = 0;
     else
         _oldMessagesCount = 0;
+}
+
+void MailStoreObserver::reformatPublishedMessages()
+{
+    QStringList messageIdList = _publishedMessages.split(",", QString::SkipEmptyParts);
+     for (int i = 0; i < messageIdList.size(); ++i) {
+        QMailMessageId messageId(messageIdList.at(i).toInt());
+        QMailMessageMetaData message(messageId);
+        if (notifyMessage(message)) {
+            _publishedMessageList.insert(messageId,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
+        } else {
+            // This message got read somewhere else
+             _publishedItemCount--;
+        }
+    }
+     reformatNotification(false, _publishedMessageList.size());
+}
+
+QString MailStoreObserver::publishedMessageIds()
+{
+    Q_ASSERT(_publishedMessageList.size());
+    QStringList messageIdList;
+    QList<QMailMessageId> messageIds = _publishedMessageList.uniqueKeys();
+    foreach (const QMailMessageId &id, messageIds) {
+       messageIdList << QString::number(id.toULongLong());
+    }
+    return messageIdList.join(",");
 }
 
 // Checks if there are pubslishedNotifications for this app
@@ -166,6 +206,7 @@ bool MailStoreObserver::publishedNotification()
         Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(0));
         _replacesId = publishedNotification->replacesId();
         _publishedItemCount = publishedNotification->itemCount();
+        _publishedMessages = publishedNotification->hintValue("x-nemo.email.published-messages").toString();
         _notification->setReplacesId(_replacesId);
         return true;
     } else {
