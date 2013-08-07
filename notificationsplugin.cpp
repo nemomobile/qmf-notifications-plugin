@@ -33,9 +33,20 @@
 #include "notificationsplugin.h"
 #include <qmaillog.h>
 
+#include <QCoreApplication>
+#include <QTranslator>
+
 NotificationsPlugin::NotificationsPlugin(QObject *parent)
     : QMailMessageServerPlugin(parent)
 {
+    QString translationPath("/usr/share/translations/");
+    QTranslator *engineeringEnglish = new QTranslator(this);
+    engineeringEnglish->load("qmf-notifications_eng_en", translationPath);
+    QCoreApplication::instance()->installTranslator(engineeringEnglish);
+
+    QTranslator *translator = new QTranslator(this);
+    translator->load(QLocale(), "qmf-notifications", "-", translationPath);
+    QCoreApplication::instance()->installTranslator(translator);
 }
 
 NotificationsPlugin::~NotificationsPlugin()
