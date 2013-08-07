@@ -119,7 +119,7 @@ QSharedPointer<MessageInfo> MailStoreObserver::messageInfo(const QMailMessageId 
 }
 
 // Check if we have messages from more than one account
-bool MailStoreObserver::notificationsFromMutipleAccounts()
+bool MailStoreObserver::notificationsFromMultipleAccounts()
 {
     uint accountId = 0;
     foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList) {
@@ -188,7 +188,7 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         _notification->setBody(QString());
         _notification->setTimestamp(lastestPublishedMessageTimeStamp());
 
-        if (notificationsFromMutipleAccounts()) {
+        if (notificationsFromMultipleAccounts()) {
             _notification->setRemoteDBusCallMethodName("openCombinedInbox");
             _notification->setRemoteDBusCallArguments(QVariantList());
         } else {
