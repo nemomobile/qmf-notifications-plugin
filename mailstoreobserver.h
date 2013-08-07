@@ -73,7 +73,7 @@ private:
     MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);
     QDateTime lastestPublishedMessageTimeStamp();
     QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
-    bool notificationsFromMutipleAccounts();
+    bool notificationsFromMultipleAccounts();
     bool notifyMessage(const QMailMessageMetaData &message);
     void reformatNotification(bool notify, int newCount);
     void reformatPublishedMessages();
