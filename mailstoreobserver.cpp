@@ -172,10 +172,14 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         _notification->setRemoteDBusCallMethodName("openMessage");
         _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
     } else {
-        QString summary = QString("%1 New email(s)").arg(newCount);
+        //: Summary of new email(s) notification
+        //% "You have %1 new email(s)"
+        QString summary = qtTrId("qmf-notification_new_email_notification").arg(newCount);
         _notification->setSummary(summary);
         if (notify) {
-            QString previewSummary = QString("%1 New email(s)").arg(_newMessagesCount);
+            //: Notification preview of new email(s)
+            //% "You have %1 new email(s)"
+            QString previewSummary = qtTrId("qmf-notification_new_email_notification").arg(_newMessagesCount);
             _notification->setPreviewSummary(previewSummary);
         } else {
             _notification->setPreviewSummary(QString());

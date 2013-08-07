@@ -115,16 +115,21 @@ void RunningAction::activityChanged(QMailServiceAction::Activity activity)
 {
     switch (activity) {
     case QMailServiceAction::Failed:
-        // TODO: Where translations go ??
-        if(_runningInTransferEngine)
-            _transferClient->finishTransfer(_transferId, TransferEngineClient::TransferInterrupted, QString("Email Sync Failed"));
-        _runningInTransferEngine = false;
+
+        if(_runningInTransferEngine) {
+            //: Notifies in transfer-ui that email sync failed
+            //% "Email Sync Failed"
+            QString error = qtTrId("qmf-notification_email_sync_failed");
+            _transferClient->finishTransfer(_transferId, TransferEngineClient::TransferInterrupted, error);
+            _runningInTransferEngine = false;
+        }
         emit actionComplete(_action.data()->id());
         break;
     case QMailServiceAction::Successful:
-        if(_runningInTransferEngine)
+        if(_runningInTransferEngine) {
             _transferClient->finishTransfer(_transferId, TransferEngineClient::TransferFinished);
-        _runningInTransferEngine = false;
+            _runningInTransferEngine = false;
+        }
         emit actionComplete(_action.data()->id());
         break;
     default:
