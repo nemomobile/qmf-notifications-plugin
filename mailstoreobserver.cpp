@@ -31,6 +31,7 @@
  */
 
 #include "mailstoreobserver.h"
+#include <QDBusConnection>
 #include <QDebug>
 
 MailStoreObserver::MailStoreObserver(QObject *parent) :
@@ -38,6 +39,7 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     _newMessagesCount(0),
     _publishedItemCount(0),
     _oldMessagesCount(0),
+    _notify(false),
     _replacesId(0),
     _notification(new Notification(this))
 {
@@ -69,6 +71,10 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
         qDebug() << "No published notification";
     }
 
+    QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayEntered",
+                                          this, SLOT(setNotifyOff()));
+    QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayExit",
+                                          this, SLOT(setNotifyOn()));
 }
 
 // Close existent notification
@@ -159,8 +165,8 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         // TODO CHECK IF THIS CAN HAPPEN, e.g message status fails to change.
         Q_ASSERT(_publishedMessageList.size() == 1);
         QSharedPointer<MessageInfo> msgInfo = messageInfo();
-        // If is a need message just added, notify the user.
-        if (notify) {
+        // If is a new message just added, notify the user.
+        if (notify && _notify) {
             _notification->setPreviewBody(msgInfo.data()->subject);
             _notification->setPreviewSummary(msgInfo.data()->sender);
         } else {
@@ -176,7 +182,7 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
         //% "You have %n new email(s)"
         QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
         _notification->setSummary(summary);
-        if (notify) {
+        if (notify  && _notify) {
             //: Notification preview of new email(s)
             //% "You have %n new email(s)"
             QString previewSummary = qtTrId("qmf-notification_new_email_notification", _newMessagesCount);
@@ -210,15 +216,26 @@ void MailStoreObserver::reformatNotification(bool notify, int newCount)
 
 void MailStoreObserver::reformatPublishedMessages()
 {
+    QMailAccountKey enabledAccountKey = QMailAccountKey::status(QMailAccount::Enabled |
+                                                         QMailAccount::CanRetrieve |
+                                                         QMailAccount::CanTransmit,
+                                                         QMailDataComparator::Includes);
+    _enabledAccounts = QMailStore::instance()->queryAccounts(enabledAccountKey);
+
     QStringList messageIdList = _publishedMessages.split(",", QString::SkipEmptyParts);
      for (int i = 0; i < messageIdList.size(); ++i) {
         QMailMessageId messageId(messageIdList.at(i).toInt());
         QMailMessageMetaData message(messageId);
-        if (notifyMessage(message)) {
-            _publishedMessageList.insert(messageId,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
-        } else {
-            // This message got read somewhere else
-             _publishedItemCount--;
+        QMailAccountId accountId(message.parentAccountId());
+        // Checks if parent account is still valid
+        // accounts can be removed when messageServer is not running.
+        if (_enabledAccounts.contains(accountId)) {
+            if (notifyMessage(message)) {
+                _publishedMessageList.insert(messageId,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
+            } else {
+                // This message got read somewhere else
+                 _publishedItemCount--;
+            }
         }
     }
      reformatNotification(false, _publishedMessageList.size());
@@ -308,5 +325,14 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
             }
         }
     }
+}
 
+void MailStoreObserver::setNotifyOn()
+{
+    _notify = true;
+}
+
+void MailStoreObserver::setNotifyOff()
+{
+    _notify = false;
 }

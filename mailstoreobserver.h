@@ -58,16 +58,20 @@ private slots:
     void addMessages(const QMailMessageIdList &ids);
     void removeMessages(const QMailMessageIdList &ids);
     void updateMessages(const QMailMessageIdList &ids);
+    void setNotifyOn();
+    void setNotifyOff();
     
 private:
     int _newMessagesCount;
     int _publishedItemCount;
     int _oldMessagesCount;
+    bool _notify;
     uint _replacesId;
     QString _publishedMessages;
     QMailStore *_storage;
     Notification *_notification;
     QHash<QMailMessageId, QSharedPointer<MessageInfo> > _publishedMessageList;
+    QMailAccountIdList _enabledAccounts;
 
     void closeNotifications();
     MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);
