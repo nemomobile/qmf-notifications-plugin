@@ -154,8 +154,10 @@ void RunningAction::progressChanged(uint value, uint total)
 
 void RunningAction::statusAccountIdChanged(const QMailAccountId &accountId)
 {
-    Q_ASSERT(accountId.isValid());
-    if (!_runningInTransferEngine) {
+    if(!accountId.isValid()){
+        qDebug() << Q_FUNC_INFO << "Account " << accountId.toULongLong()
+                   << " was removed/disabled while action was in progress, no actions to report for invalid account.";
+    } else if (!_runningInTransferEngine) {
         AccountInfo acctInfo = _accountsCache->accountInfo(static_cast<Accounts::AccountId>(accountId.toULongLong()));
         _transferId = _transferClient->createSyncEvent(acctInfo.name, QUrl(), acctInfo.providerIcon);
         if (_transferId) {
@@ -223,6 +225,3 @@ void ActionObserver::actionCompleted(quint64 id)
     _runningActions.remove(id);
     _completedActions.append(id);
 }
-
-
-

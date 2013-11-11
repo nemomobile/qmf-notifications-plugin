@@ -140,7 +140,8 @@ bool MailStoreObserver::notificationsFromMultipleAccounts()
     return false;
 }
 
-// Check if this message should be notified
+// Check if this message should be notified, old messages are not
+// notified since QMailMessage::NoNotification is used
 bool MailStoreObserver::notifyMessage(const QMailMessageMetaData &message)
 {
     if (message.messageType()==QMailMessage::Email &&
