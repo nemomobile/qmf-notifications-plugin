@@ -270,7 +270,7 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
     if (showPreview  && !_appOnScreen) {
         //: Notification preview of new email(s)
         //% "You have %n new email(s)"
-        QString previewSummary = qtTrId("qmf-notification_new_email_notification", _newMessagesCount);
+        QString previewSummary = qtTrId("qmf-notification_new_email_banner_notification", _newMessagesCount);
         _notification->setPreviewSummary(previewSummary);
     } else {
         _notification->setPreviewSummary(QString());
