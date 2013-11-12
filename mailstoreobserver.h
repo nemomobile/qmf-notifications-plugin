@@ -65,7 +65,7 @@ private:
     int _newMessagesCount;
     int _publishedItemCount;
     int _oldMessagesCount;
-    bool _notify;
+    bool _appOnScreen;
     uint _replacesId;
     QString _publishedMessages;
     QMailStore *_storage;
@@ -79,10 +79,12 @@ private:
     QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
     bool notificationsFromMultipleAccounts();
     bool notifyMessage(const QMailMessageMetaData &message);
-    void reformatNotification(bool notify, int newCount);
+    void notifyOnly();
+    void reformatNotification(bool showPreview, int newCount);
     void reformatPublishedMessages();
     QString publishedMessageIds();
-    void publishNotification();
+    void publishNotification(bool showPreview);
+    void publishNotifications(bool showPreview, int newCount);
     bool publishedNotification();
     void updateNotificationCount();
 };

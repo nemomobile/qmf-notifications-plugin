@@ -39,7 +39,7 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     _newMessagesCount(0),
     _publishedItemCount(0),
     _oldMessagesCount(0),
-    _notify(false),
+    _appOnScreen(false),
     _replacesId(0),
     _notification(new Notification(this))
 {
@@ -64,11 +64,10 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
             qDebug() << "Reformating published messages " <<  _publishedMessages;
             reformatPublishedMessages();
         } else {
-            qDebug() << "Closing notification " << _replacesId;
             closeNotifications();
         }
     } else {
-        qDebug() << "No published notification";
+        qDebug() << "No published notification!";
     }
 
     QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayEntered",
@@ -80,7 +79,12 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
 // Close existent notification
 void MailStoreObserver::closeNotifications()
 {
-        _notification->close();
+    qDebug() << "Closing notification " << _replacesId;
+    _notification->close();
+    _publishedItemCount = 0;
+    _newMessagesCount = 0;
+    _oldMessagesCount = 0;
+    _publishedMessageList.clear();
 }
 
 // Contructs messageInfo object from a email message
@@ -140,7 +144,8 @@ bool MailStoreObserver::notificationsFromMultipleAccounts()
     return false;
 }
 
-// Check if this message should be notified
+// Check if this message should be notified, old messages are not
+// notified since QMailMessage::NoNotification is used
 bool MailStoreObserver::notifyMessage(const QMailMessageMetaData &message)
 {
     if (message.messageType()==QMailMessage::Email &&
@@ -154,64 +159,50 @@ bool MailStoreObserver::notifyMessage(const QMailMessageMetaData &message)
     }
 }
 
-void MailStoreObserver::reformatNotification(bool notify, int newCount)
+// App is on screen beep only
+void MailStoreObserver::notifyOnly()
+{
+    _notification->setPreviewSummary(QString());
+    _notification->setPreviewBody(QString());
+    _notification->setSummary(QString());
+    _notification->setBody(QString());
+    _notification->publish();
+    // Close notification and reset the counters
+    closeNotifications();
+}
+
+void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
 {
     // All messages read remove notification
     if (newCount == 0) {
         closeNotifications();
-        return;
-        // Only one new message use message sender and subject
-    } else if (newCount == 1) {
-        // TODO CHECK IF THIS CAN HAPPEN, e.g message status fails to change.
-        Q_ASSERT(_publishedMessageList.size() == 1);
-        QSharedPointer<MessageInfo> msgInfo = messageInfo();
-        // If is a new message just added, notify the user.
-        if (notify && _notify) {
-            _notification->setPreviewBody(msgInfo.data()->subject);
-            _notification->setPreviewSummary(msgInfo.data()->sender);
+        // App is on screen
+    } else if (_appOnScreen) {
+        // We got need messages, beep only
+        if (showPreview) {
+            notifyOnly();
         } else {
-            _notification->setPreviewSummary(QString());
+            closeNotifications();
         }
-        _notification->setSummary(msgInfo.data()->sender);
-        _notification->setBody(msgInfo.data()->subject);
-        _notification->setTimestamp(msgInfo.data()->timeStamp);
-        _notification->setRemoteDBusCallMethodName("openMessage");
-        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
     } else {
-        //: Summary of new email(s) notification
-        //% "You have %n new email(s)"
-        QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
-        _notification->setSummary(summary);
-        if (notify  && _notify) {
-            //: Notification preview of new email(s)
-            //% "You have %n new email(s)"
-            QString previewSummary = qtTrId("qmf-notification_new_email_notification", _newMessagesCount);
-            _notification->setPreviewSummary(previewSummary);
+        if (newCount == 1) {
+            publishNotification(showPreview);
         } else {
-            _notification->setPreviewSummary(QString());
+            publishNotifications(showPreview, newCount);
         }
-        _notification->setPreviewBody(QString());
-        _notification->setBody(QString());
-        _notification->setTimestamp(lastestPublishedMessageTimeStamp());
+        _notification->setItemCount(newCount);
+        _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
+        _notification->publish();
 
-        if (notificationsFromMultipleAccounts()) {
-            _notification->setRemoteDBusCallMethodName("openCombinedInbox");
-            _notification->setRemoteDBusCallArguments(QVariantList());
+        // Reset count
+        if (showPreview) {
+            _newMessagesCount = 0;
         } else {
-            QSharedPointer<MessageInfo> msgInfo = messageInfo();
-            _notification->setRemoteDBusCallMethodName("openInbox");
-            _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->accountId.toULongLong())));
+            _oldMessagesCount = 0;
         }
+
+        _publishedItemCount = newCount;
     }
-    _notification->setItemCount(newCount);
-    _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
-    _notification->publish();
-
-    //reset count
-    if (notify)
-        _newMessagesCount = 0;
-    else
-        _oldMessagesCount = 0;
 }
 
 void MailStoreObserver::reformatPublishedMessages()
@@ -252,6 +243,52 @@ QString MailStoreObserver::publishedMessageIds()
     return messageIdList.join(",");
 }
 
+// Only one new message use message sender and subject
+void MailStoreObserver::publishNotification(bool showPreview)
+{
+    QSharedPointer<MessageInfo> msgInfo = messageInfo();
+    // If is a new message just added, notify the user.
+    if (showPreview && !_appOnScreen) {
+        _notification->setPreviewBody(msgInfo.data()->subject);
+        _notification->setPreviewSummary(msgInfo.data()->sender);
+    } else {
+        _notification->setPreviewSummary(QString());
+    }
+    _notification->setSummary(msgInfo.data()->sender);
+    _notification->setBody(msgInfo.data()->subject);
+    _notification->setTimestamp(msgInfo.data()->timeStamp);
+    _notification->setRemoteDBusCallMethodName("openMessage");
+    _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
+}
+
+void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
+{
+    //: Summary of new email(s) notification
+    //% "You have %n new email(s)"
+    QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
+    _notification->setSummary(summary);
+    if (showPreview  && !_appOnScreen) {
+        //: Notification preview of new email(s)
+        //% "You have %n new email(s)"
+        QString previewSummary = qtTrId("qmf-notification_new_email_notification", _newMessagesCount);
+        _notification->setPreviewSummary(previewSummary);
+    } else {
+        _notification->setPreviewSummary(QString());
+    }
+    _notification->setPreviewBody(QString());
+    _notification->setBody(QString());
+    _notification->setTimestamp(lastestPublishedMessageTimeStamp());
+
+    if (notificationsFromMultipleAccounts()) {
+        _notification->setRemoteDBusCallMethodName("openCombinedInbox");
+        _notification->setRemoteDBusCallArguments(QVariantList());
+    } else {
+        QSharedPointer<MessageInfo> msgInfo = messageInfo();
+        _notification->setRemoteDBusCallMethodName("openInbox");
+        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->accountId.toULongLong())));
+    }
+}
+
 // Checks if there are pubslishedNotifications for this app
 bool MailStoreObserver::publishedNotification()
 {
@@ -275,15 +312,16 @@ bool MailStoreObserver::publishedNotification()
 
 void MailStoreObserver::actionsCompleted()
 {
-    // if there's already a published notification use it
-    publishedNotification();
+    if (_oldMessagesCount > 0 || _newMessagesCount > 0) {
+        // if there's already a published notification use it
+        publishedNotification();
 
-    if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
-        Q_ASSERT(_publishedItemCount >= _oldMessagesCount);
-        reformatNotification(false, _publishedItemCount -_oldMessagesCount);
-    }
-    if (_newMessagesCount > 0) {
-        reformatNotification(true, _newMessagesCount + _publishedItemCount);
+        if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
+            Q_ASSERT(_publishedItemCount >= _oldMessagesCount);
+            reformatNotification(false, _publishedItemCount -_oldMessagesCount);
+        } else if (_newMessagesCount > 0) {
+            reformatNotification(true, _newMessagesCount + _publishedItemCount);
+        }
     }
 }
 
@@ -329,10 +367,14 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
 
 void MailStoreObserver::setNotifyOn()
 {
-    _notify = true;
+    _appOnScreen = false;
 }
 
 void MailStoreObserver::setNotifyOff()
 {
-    _notify = false;
+    // App is on screen now, close the notification
+    if (_publishedItemCount > 0) {
+        closeNotifications();
+    }
+    _appOnScreen = true;
 }
