@@ -329,7 +329,8 @@ void MailStoreObserver::addMessages(const QMailMessageIdList &ids)
 {
     foreach (const QMailMessageId &id, ids) {
         QMailMessageMetaData message(id);
-        if (notifyMessage(message)) {
+        // Workaround for plugin that try to add same message twice
+        if (notifyMessage(message) && !_publishedMessageList.contains(id)) {
             _newMessagesCount++;
             _publishedMessageList.insert(id,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
         }
