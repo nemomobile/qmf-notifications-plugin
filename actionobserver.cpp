@@ -32,6 +32,7 @@
 
 #include "actionobserver.h"
 #include <QtGlobal>
+#include <QTimer>
 #include <QDebug>
 
 // Utility function for debug proposes
@@ -214,8 +215,10 @@ void ActionObserver::actionsChanged(QList<QSharedPointer<QMailActionInfo> > acti
          if (_completedActions.size() > 0) {
              _completedActions.clear();
          }
-         // No more actions running
-         emit actionsCompleted();
+         // No more actions running, wait before emiting the signal,
+         // in case of mutiple accounts sync, new actions will start
+         // only after first ones are done.
+         QTimer::singleShot(1000, this, SLOT(emptyActionQueue()));
     }
 }
 
@@ -224,4 +227,11 @@ void ActionObserver::actionCompleted(quint64 id)
     Q_ASSERT(_runningActions.contains(id));
     _runningActions.remove(id);
     _completedActions.append(id);
+}
+
+void ActionObserver::emptyActionQueue()
+{
+    if (_runningActions.empty()) {
+        emit actionsCompleted();
+    }
 }
