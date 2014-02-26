@@ -77,6 +77,7 @@ signals:
 private slots:
     void actionsChanged(QList<QSharedPointer<QMailActionInfo> > actions);
     void actionCompleted(quint64 id);
+    void emptyActionQueue();
 
 private:
     bool isNotificationAction(QMailServerRequestType requestType);
