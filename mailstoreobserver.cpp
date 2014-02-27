@@ -317,8 +317,13 @@ void MailStoreObserver::actionsCompleted()
         publishedNotification();
 
         if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
-            Q_ASSERT(_publishedItemCount >= _oldMessagesCount);
-            reformatNotification(false, _publishedItemCount -_oldMessagesCount);
+            if (_oldMessagesCount > _publishedItemCount) {
+                qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
+                           << _oldMessagesCount << " Published:" << _publishedItemCount;
+                reformatNotification(false, 0);
+            } else {
+                reformatNotification(false, _publishedItemCount -_oldMessagesCount);
+            }
         } else if (_newMessagesCount > 0) {
             reformatNotification(true, _newMessagesCount + _publishedItemCount);
         }
