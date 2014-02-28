@@ -72,6 +72,7 @@ private:
     Notification *_notification;
     QHash<QMailMessageId, QSharedPointer<MessageInfo> > _publishedMessageList;
     QMailAccountIdList _enabledAccounts;
+    QMailMessageId _lastReceivedId;
 
     void closeNotifications();
     MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);

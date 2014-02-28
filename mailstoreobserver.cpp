@@ -41,7 +41,8 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     _oldMessagesCount(0),
     _appOnScreen(false),
     _replacesId(0),
-    _notification(new Notification(this))
+    _notification(new Notification(this)),
+    _lastReceivedId(0)
 {
     qDebug() << "Store observer initialized";
     _storage = QMailStore::instance();
@@ -118,14 +119,17 @@ QDateTime MailStoreObserver::lastestPublishedMessageTimeStamp()
 // Returns messageInfo object from the list of published messages
 QSharedPointer<MessageInfo> MailStoreObserver::messageInfo(const QMailMessageId id)
 {
-    // Take first
-    if (!id.isValid()) {
-        foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList)
-            return msgInfo;
-    } else {
-        Q_ASSERT(_publishedMessageList.contains(id));
-        return _publishedMessageList.value(id);
+    if (_publishedMessageList.size()) {
+        // Get one value
+        if (!id.isValid()) {
+            foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList)
+                return msgInfo;
+        } else {
+            Q_ASSERT(_publishedMessageList.contains(id));
+            return _publishedMessageList.value(id);
+        }
     }
+    return QSharedPointer<MessageInfo>();
 }
 
 // Check if we have messages from more than one account
@@ -195,11 +199,8 @@ void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
         _notification->publish();
 
         // Reset count
-        if (showPreview) {
-            _newMessagesCount = 0;
-        } else {
-            _oldMessagesCount = 0;
-        }
+        _oldMessagesCount = 0;
+        _newMessagesCount = 0;
 
         _publishedItemCount = newCount;
     }
@@ -246,19 +247,32 @@ QString MailStoreObserver::publishedMessageIds()
 // Only one new message use message sender and subject
 void MailStoreObserver::publishNotification(bool showPreview)
 {
-    QSharedPointer<MessageInfo> msgInfo = messageInfo();
-    // If is a new message just added, notify the user.
-    if (showPreview && !_appOnScreen) {
-        _notification->setPreviewBody(msgInfo.data()->subject);
-        _notification->setPreviewSummary(msgInfo.data()->sender);
+    QSharedPointer<MessageInfo> msgInfo;
+    if (_newMessagesCount) {
+        msgInfo = messageInfo(_lastReceivedId);
     } else {
-        _notification->setPreviewSummary(QString());
+        if (_publishedMessageList.size() > 1) {
+            qWarning() << Q_FUNC_INFO << "Published message list contains more than one item!";
+        }
+        msgInfo = messageInfo();
     }
-    _notification->setSummary(msgInfo.data()->sender);
-    _notification->setBody(msgInfo.data()->subject);
-    _notification->setTimestamp(msgInfo.data()->timeStamp);
-    _notification->setRemoteDBusCallMethodName("openMessage");
-    _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
+
+    if (!msgInfo.isNull()) {
+        // If is a new message just added, notify the user.
+        if (showPreview && !_appOnScreen) {
+            _notification->setPreviewBody(msgInfo.data()->subject);
+            _notification->setPreviewSummary(msgInfo.data()->sender);
+        } else {
+            _notification->setPreviewSummary(QString());
+        }
+        _notification->setSummary(msgInfo.data()->sender);
+        _notification->setBody(msgInfo.data()->subject);
+        _notification->setTimestamp(msgInfo.data()->timeStamp);
+        _notification->setRemoteDBusCallMethodName("openMessage");
+        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
+    }
 }
 
 void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
@@ -268,14 +282,20 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
     QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
     _notification->setSummary(summary);
     if (showPreview  && !_appOnScreen) {
-        //: Notification preview of new email(s)
-        //% "You have %n new email(s)"
-        QString previewSummary = qtTrId("qmf-notification_new_email_banner_notification", _newMessagesCount);
-        _notification->setPreviewSummary(previewSummary);
+        if (_newMessagesCount == 1) {
+            QSharedPointer<MessageInfo> msgInfo = messageInfo(_lastReceivedId);
+            _notification->setPreviewBody(msgInfo.data()->subject);
+            _notification->setPreviewSummary(msgInfo.data()->sender);
+        } else {
+            //: Notification preview of new email(s)
+            //% "You have %n new email(s)"
+            QString previewSummary = qtTrId("qmf-notification_new_email_banner_notification", _newMessagesCount);
+            _notification->setPreviewSummary(previewSummary);
+            _notification->setPreviewBody(QString());
+        }
     } else {
         _notification->setPreviewSummary(QString());
     }
-    _notification->setPreviewBody(QString());
     _notification->setBody(QString());
     _notification->setTimestamp(lastestPublishedMessageTimeStamp());
 
@@ -284,8 +304,15 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
         _notification->setRemoteDBusCallArguments(QVariantList());
     } else {
         QSharedPointer<MessageInfo> msgInfo = messageInfo();
+        QVariant acctId;
+        if (!msgInfo.isNull()) {
+            acctId = static_cast<int>(msgInfo.data()->accountId.toULongLong());
+        } else {
+            qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
+            acctId = 0;
+        }
         _notification->setRemoteDBusCallMethodName("openInbox");
-        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->accountId.toULongLong())));
+        _notification->setRemoteDBusCallArguments(QVariantList() << acctId);
     }
 }
 
@@ -319,10 +346,10 @@ void MailStoreObserver::actionsCompleted()
         if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
             if (_oldMessagesCount > _publishedItemCount) {
                 qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
-                           << _oldMessagesCount << " Published:" << _publishedItemCount;
-                reformatNotification(false, 0);
+                           << _oldMessagesCount << " Published:" << _publishedItemCount << " New:" << _newMessagesCount;
+                reformatNotification(false, _newMessagesCount);
             } else {
-                reformatNotification(false, _publishedItemCount -_oldMessagesCount);
+                reformatNotification(_newMessagesCount ? true : false, (_publishedItemCount -_oldMessagesCount) + _newMessagesCount);
             }
         } else if (_newMessagesCount > 0) {
             reformatNotification(true, _newMessagesCount + _publishedItemCount);
@@ -338,6 +365,7 @@ void MailStoreObserver::addMessages(const QMailMessageIdList &ids)
         if (notifyMessage(message) && !_publishedMessageList.contains(id)) {
             _newMessagesCount++;
             _publishedMessageList.insert(id,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
+            _lastReceivedId = id;
         }
     }
 }
