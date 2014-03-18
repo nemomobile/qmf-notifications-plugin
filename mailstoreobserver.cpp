@@ -320,9 +320,11 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
 bool MailStoreObserver::publishedNotification()
 {
     QList<QObject*> publishedNotifications = _notification->notifications();
-    Q_ASSERT(publishedNotifications.size() < 2);
 
-    if (publishedNotifications.size() > 0) {
+    if (publishedNotifications.size() < 1) {
+        _publishedItemCount = 0;
+        return false;
+    } else if (publishedNotifications.size() == 1) {
         Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(0));
         _replacesId = publishedNotification->replacesId();
         _publishedItemCount = publishedNotification->itemCount();
@@ -330,7 +332,15 @@ bool MailStoreObserver::publishedNotification()
         _notification->setReplacesId(_replacesId);
         return true;
     } else {
-         _publishedItemCount = 0;
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            publishedNotification->close();
+        }
+        _publishedItemCount = 0;
+        _newMessagesCount = 0;
+        _oldMessagesCount = 0;
+        _publishedMessageList.clear();
+        qWarning() << Q_FUNC_INFO << "More than one notification published, closing all";
         return false;
     }
 }
