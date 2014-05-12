@@ -189,11 +189,7 @@ void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
             closeNotifications();
         }
     } else {
-        if (newCount == 1) {
-            publishNotification(showPreview);
-        } else {
-            publishNotifications(showPreview, newCount);
-        }
+        publishNotifications(showPreview, newCount);
         _notification->setItemCount(newCount);
         _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
         _notification->publish();
@@ -208,14 +204,11 @@ void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
 
 void MailStoreObserver::reformatPublishedMessages()
 {
-    QMailAccountKey enabledAccountKey = QMailAccountKey::status(QMailAccount::Enabled |
-                                                         QMailAccount::CanRetrieve |
-                                                         QMailAccount::CanTransmit,
-                                                         QMailDataComparator::Includes);
-    _enabledAccounts = QMailStore::instance()->queryAccounts(enabledAccountKey);
+    _enabledAccounts = QMailStore::instance()->queryAccounts(QMailAccountKey::messageType(QMailMessage::Email)
+                                                             & QMailAccountKey::status(QMailAccount::Enabled));
 
     QStringList messageIdList = _publishedMessages.split(",", QString::SkipEmptyParts);
-     for (int i = 0; i < messageIdList.size(); ++i) {
+    for (int i = 0; i < messageIdList.size(); ++i) {
         QMailMessageId messageId(messageIdList.at(i).toInt());
         QMailMessageMetaData message(messageId);
         QMailAccountId accountId(message.parentAccountId());
@@ -230,7 +223,7 @@ void MailStoreObserver::reformatPublishedMessages()
             }
         }
     }
-     reformatNotification(false, _publishedMessageList.size());
+    reformatNotification(false, _publishedMessageList.size());
 }
 
 QString MailStoreObserver::publishedMessageIds()
@@ -244,75 +237,67 @@ QString MailStoreObserver::publishedMessageIds()
     return messageIdList.join(",");
 }
 
-// Only one new message use message sender and subject
-void MailStoreObserver::publishNotification(bool showPreview)
-{
-    QSharedPointer<MessageInfo> msgInfo;
-    if (_newMessagesCount) {
-        msgInfo = messageInfo(_lastReceivedId);
-    } else {
-        if (_publishedMessageList.size() > 1) {
-            qWarning() << Q_FUNC_INFO << "Published message list contains more than one item!";
-        }
-        msgInfo = messageInfo();
-    }
-
-    if (!msgInfo.isNull()) {
-        // If is a new message just added, notify the user.
-        if (showPreview && !_appOnScreen) {
-            _notification->setPreviewBody(msgInfo.data()->subject);
-            _notification->setPreviewSummary(msgInfo.data()->sender);
-        } else {
-            _notification->setPreviewSummary(QString());
-        }
-        _notification->setSummary(msgInfo.data()->sender);
-        _notification->setBody(msgInfo.data()->subject);
-        _notification->setTimestamp(msgInfo.data()->timeStamp);
-        _notification->setRemoteDBusCallMethodName("openMessage");
-        _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
-    } else {
-        qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
-    }
-}
-
 void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
 {
-    //: Summary of new email(s) notification
-    //% "You have %n new email(s)"
-    QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
-    _notification->setSummary(summary);
-    if (showPreview  && !_appOnScreen) {
-        if (_newMessagesCount == 1) {
-            QSharedPointer<MessageInfo> msgInfo = messageInfo(_lastReceivedId);
-            _notification->setPreviewBody(msgInfo.data()->subject);
-            _notification->setPreviewSummary(msgInfo.data()->sender);
+    if (newCount == 1) {
+        QSharedPointer<MessageInfo> msgInfo;
+        if (_newMessagesCount) {
+            msgInfo = messageInfo(_lastReceivedId);
         } else {
+            if (_publishedMessageList.size() > 1) {
+                qWarning() << Q_FUNC_INFO << "Published message list contains more than one item!";
+            }
+            msgInfo = messageInfo();
+        }
+
+        if (!msgInfo.isNull()) {
+            // If is a new message just added, notify the user.
+            if (showPreview && !_appOnScreen) {
+                _notification->setPreviewBody(msgInfo.data()->subject);
+                _notification->setPreviewSummary(msgInfo.data()->sender);
+            } else {
+                _notification->setPreviewSummary(QString());
+            }
+            _notification->setSummary(msgInfo.data()->sender);
+            _notification->setBody(msgInfo.data()->subject);
+            _notification->setTimestamp(msgInfo.data()->timeStamp);
+            _notification->setRemoteDBusCallMethodName("openMessage");
+            _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
+        } else {
+            qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
+        }
+    } else {
+        //: Summary of new email(s) notification
+        //% "You have %n new email(s)"
+        QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
+        _notification->setSummary(summary);
+        if (showPreview  && !_appOnScreen) {
             //: Notification preview of new email(s)
             //% "You have %n new email(s)"
             QString previewSummary = qtTrId("qmf-notification_new_email_banner_notification", _newMessagesCount);
             _notification->setPreviewSummary(previewSummary);
             _notification->setPreviewBody(QString());
-        }
-    } else {
-        _notification->setPreviewSummary(QString());
-    }
-    _notification->setBody(QString());
-    _notification->setTimestamp(lastestPublishedMessageTimeStamp());
-
-    if (notificationsFromMultipleAccounts()) {
-        _notification->setRemoteDBusCallMethodName("openCombinedInbox");
-        _notification->setRemoteDBusCallArguments(QVariantList());
-    } else {
-        QSharedPointer<MessageInfo> msgInfo = messageInfo();
-        QVariant acctId;
-        if (!msgInfo.isNull()) {
-            acctId = static_cast<int>(msgInfo.data()->accountId.toULongLong());
         } else {
-            qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
-            acctId = 0;
+            _notification->setPreviewSummary(QString());
         }
-        _notification->setRemoteDBusCallMethodName("openInbox");
-        _notification->setRemoteDBusCallArguments(QVariantList() << acctId);
+        _notification->setBody(QString());
+        _notification->setTimestamp(lastestPublishedMessageTimeStamp());
+
+        if (notificationsFromMultipleAccounts()) {
+            _notification->setRemoteDBusCallMethodName("openCombinedInbox");
+            _notification->setRemoteDBusCallArguments(QVariantList());
+        } else {
+            QSharedPointer<MessageInfo> msgInfo = messageInfo();
+            QVariant acctId;
+            if (!msgInfo.isNull()) {
+                acctId = static_cast<int>(msgInfo.data()->accountId.toULongLong());
+            } else {
+                qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
+                acctId = 0;
+            }
+            _notification->setRemoteDBusCallMethodName("openInbox");
+            _notification->setRemoteDBusCallArguments(QVariantList() << acctId);
+        }
     }
 }
 
@@ -353,17 +338,11 @@ void MailStoreObserver::actionsCompleted()
         // if there's already a published notification use it
         publishedNotification();
 
-        if (_oldMessagesCount > 0 && _publishedItemCount > 0) {
-            if (_oldMessagesCount > _publishedItemCount) {
-                qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
-                           << _oldMessagesCount << " Published:" << _publishedItemCount << " New:" << _newMessagesCount;
-                reformatNotification(false, _publishedMessageList.size());
-            } else {
-                reformatNotification(_newMessagesCount ? true : false, _publishedMessageList.size());
-            }
-        } else if (_newMessagesCount > 0) {
-            reformatNotification(true, _publishedMessageList.size());
+        if (_oldMessagesCount > _publishedItemCount) {
+            qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
+                       << _oldMessagesCount << " Published:" << _publishedItemCount << " New:" << _newMessagesCount;
         }
+        reformatNotification(_newMessagesCount ? true : false, _publishedMessageList.size());
     }
 }
 
