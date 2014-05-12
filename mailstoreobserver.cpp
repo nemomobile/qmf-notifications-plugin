@@ -202,7 +202,7 @@ void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
         _oldMessagesCount = 0;
         _newMessagesCount = 0;
 
-        _publishedItemCount = newCount;
+        _publishedItemCount = _publishedMessageList.size();
     }
 }
 
@@ -357,12 +357,12 @@ void MailStoreObserver::actionsCompleted()
             if (_oldMessagesCount > _publishedItemCount) {
                 qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
                            << _oldMessagesCount << " Published:" << _publishedItemCount << " New:" << _newMessagesCount;
-                reformatNotification(false, _newMessagesCount);
+                reformatNotification(false, _publishedMessageList.size());
             } else {
-                reformatNotification(_newMessagesCount ? true : false, (_publishedItemCount -_oldMessagesCount) + _newMessagesCount);
+                reformatNotification(_newMessagesCount ? true : false, _publishedMessageList.size());
             }
         } else if (_newMessagesCount > 0) {
-            reformatNotification(true, _newMessagesCount + _publishedItemCount);
+            reformatNotification(true, _publishedMessageList.size());
         }
     }
 }
