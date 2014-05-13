@@ -84,7 +84,6 @@ private:
     void reformatNotification(bool showPreview, int newCount);
     void reformatPublishedMessages();
     QString publishedMessageIds();
-    void publishNotification(bool showPreview);
     void publishNotifications(bool showPreview, int newCount);
     bool publishedNotification();
     void updateNotificationCount();
