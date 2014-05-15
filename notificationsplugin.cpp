@@ -68,6 +68,10 @@ void NotificationsPlugin::exec()
     // only then emit notifications.
     connect(_actionObserver, SIGNAL(actionsCompleted()),
             _mailStoreObserver, SLOT(actionsCompleted()));
+    connect(_actionObserver, SIGNAL(transmitCompleted(QMailAccountId)),
+            _mailStoreObserver, SLOT(transmitCompleted(QMailAccountId)));
+    connect(_actionObserver, SIGNAL(transmitFailed(QMailAccountId)),
+            _mailStoreObserver, SLOT(transmitFailed(QMailAccountId)));
     qMailLog(Messaging) << "Initiating mail notifications plugin";
 }
 

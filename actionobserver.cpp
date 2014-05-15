@@ -35,6 +35,9 @@
 #include <QTimer>
 #include <QDebug>
 
+#include <qmailmessage.h>
+#include <qmailaccount.h>
+
 // Utility function for debug proposes
 QString requestTypeToString(QMailServerRequestType t)
 {
@@ -116,7 +119,14 @@ void RunningAction::activityChanged(QMailServiceAction::Activity activity)
 {
     switch (activity) {
     case QMailServiceAction::Failed:
-
+        if (_action.data()->requestType() == TransmitMessagesRequestType) {
+            QMailAccountId accountId = _action.data()->statusAccountId();
+            if (accountId.isValid()) {
+                emit transmitFailed(accountId);
+            } else {
+                qWarning() << Q_FUNC_INFO <<  "Invalid account id, will not emit transmitFailed";
+            }
+        }
         if(_runningInTransferEngine) {
             //: Notifies in transfer-ui that email sync failed
             //% "Email Sync Failed"
@@ -127,6 +137,14 @@ void RunningAction::activityChanged(QMailServiceAction::Activity activity)
         emit actionComplete(_action.data()->id());
         break;
     case QMailServiceAction::Successful:
+        if (_action.data()->requestType() == TransmitMessagesRequestType) {
+            QMailAccountId accountId = _action.data()->statusAccountId();
+            if (accountId.isValid()) {
+                emit transmitCompleted(accountId);
+            } else {
+                qWarning() << Q_FUNC_INFO <<  "Invalid account id, will not emit transmitCompleted";
+            }
+        }
         if(_runningInTransferEngine) {
             _transferClient->finishTransfer(_transferId, TransferEngineClient::TransferFinished);
             _runningInTransferEngine = false;
@@ -207,6 +225,11 @@ void ActionObserver::actionsChanged(QList<QSharedPointer<QMailActionInfo> > acti
             RunningAction* runningAction = new RunningAction(action, _accountsCache, this);
             _runningActions.insert(action.data()->id(), runningAction);
             connect(runningAction, SIGNAL(actionComplete(quint64)), this, SLOT(actionCompleted(quint64)));
+            // connect notifications signals if is a transmit action
+            if (action.data()->requestType() == TransmitMessagesRequestType) {
+                connect(runningAction, SIGNAL(transmitCompleted(QMailAccountId)), this, SIGNAL(transmitCompleted(QMailAccountId)));
+                connect(runningAction, SIGNAL(transmitFailed(QMailAccountId)), this, SIGNAL(transmitFailed(QMailAccountId)));
+            }
         }
     }
 

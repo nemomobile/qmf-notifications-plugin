@@ -58,6 +58,8 @@ private slots:
     void addMessages(const QMailMessageIdList &ids);
     void removeMessages(const QMailMessageIdList &ids);
     void updateMessages(const QMailMessageIdList &ids);
+    void transmitCompleted(const QMailAccountId &accountId);
+    void transmitFailed(const QMailAccountId &accountId);
     void setNotifyOn();
     void setNotifyOff();
     
