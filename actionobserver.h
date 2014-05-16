@@ -53,6 +53,8 @@ private slots:
 
 signals:
     void actionComplete(quint64 id);
+    void transmitCompleted(const QMailAccountId &accountId);
+    void transmitFailed(const QMailAccountId &accountId);
 
 private:
     qreal _progress;
@@ -73,6 +75,8 @@ public:
 
 signals:
     void actionsCompleted();
+    void transmitCompleted(const QMailAccountId &accountId);
+    void transmitFailed(const QMailAccountId &accountId);
 
 private slots:
     void actionsChanged(QList<QSharedPointer<QMailActionInfo> > actions);

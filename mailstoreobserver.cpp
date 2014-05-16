@@ -301,33 +301,27 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
     }
 }
 
-// Checks if there are pubslishedNotifications for this app
+// Checks if there is a published notification for this app with hint value
+// 'x-nemo.email.published-messages'
 bool MailStoreObserver::publishedNotification()
 {
     QList<QObject*> publishedNotifications = _notification->notifications();
 
-    if (publishedNotifications.size() < 1) {
-        _publishedItemCount = 0;
-        return false;
-    } else if (publishedNotifications.size() == 1) {
-        Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(0));
-        _replacesId = publishedNotification->replacesId();
-        _publishedItemCount = publishedNotification->itemCount();
-        _publishedMessages = publishedNotification->hintValue("x-nemo.email.published-messages").toString();
-        _notification->setReplacesId(_replacesId);
-        return true;
-    } else {
+    if (publishedNotifications.size()) {
         for (int i = 0; i < publishedNotifications.size(); i++) {
             Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
-            publishedNotification->close();
+            QString publishedMessages = publishedNotification->hintValue("x-nemo.email.published-messages").toString();
+            if (!publishedMessages.isEmpty()) {
+                _replacesId = publishedNotification->replacesId();
+                _publishedItemCount = publishedNotification->itemCount();
+                _publishedMessages = publishedMessages;
+                _notification->setReplacesId(_replacesId);
+                return true;
+            }
         }
-        _publishedItemCount = 0;
-        _newMessagesCount = 0;
-        _oldMessagesCount = 0;
-        _publishedMessageList.clear();
-        qWarning() << Q_FUNC_INFO << "More than one notification published, closing all";
-        return false;
     }
+    _publishedItemCount = 0;
+    return false;
 }
 
 // ################ Slots #####################
@@ -386,6 +380,59 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
             }
         }
     }
+}
+
+void MailStoreObserver::transmitCompleted(const QMailAccountId &accountId)
+{
+    QList<QObject*> publishedNotifications = _notification->notifications();
+
+    if (publishedNotifications.size()) {
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            if (publishedNotification->hintValue("x-nemo.email.sendFailed-accountId").toULongLong() == accountId.toULongLong()) {
+                publishedNotification->close();
+            }
+        }
+    }
+}
+void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
+{
+    QList<QObject*> publishedNotifications = _notification->notifications();
+
+    if (publishedNotifications.size()) {
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            if (publishedNotification->hintValue("x-nemo.email.sendFailed-accountId").toULongLong() == accountId.toULongLong()) {
+                return;
+            }
+        }
+    }
+
+    Notification *sendFailure = new Notification(this);
+    QMailAccount account(accountId);
+    QString accountName = account.name();
+    //: Summary of email sending failed notification
+    //% "Email sending failed"
+    QString summary = qtTrId("qmf-notification_send_failed_summary");
+    //: Preview of email sending failed notification
+    //% "Failed to send email from account %1"
+    QString previewBody = qtTrId("qmf-notification_send_failed_previewBody").arg(accountName);
+    //: Body of email sending failed notification
+    //% "Account %1"
+    QString body = qtTrId("qmf-notification_send_failed_Body").arg(accountName);
+
+    sendFailure->setCategory("x-nemo.email.error");
+    sendFailure->setRemoteDBusCallServiceName("com.jolla.email.ui");
+    sendFailure->setRemoteDBusCallObjectPath("/com/jolla/email/ui");
+    sendFailure->setRemoteDBusCallInterface("com.jolla.email.ui");
+    sendFailure->setRemoteDBusCallMethodName("openOutbox");
+    sendFailure->setRemoteDBusCallArguments(QVariantList() << accountId.toULongLong());
+    sendFailure->setHintValue("x-nemo.email.sendFailed-accountId", accountId.toULongLong());
+    sendFailure->setPreviewSummary(summary);
+    sendFailure->setPreviewBody(previewBody);
+    sendFailure->setSummary(summary);
+    sendFailure->setBody(body);
+    sendFailure->publish();
 }
 
 void MailStoreObserver::setNotifyOn()
