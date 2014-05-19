@@ -426,7 +426,7 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
     sendFailure->setRemoteDBusCallObjectPath("/com/jolla/email/ui");
     sendFailure->setRemoteDBusCallInterface("com.jolla.email.ui");
     sendFailure->setRemoteDBusCallMethodName("openOutbox");
-    sendFailure->setRemoteDBusCallArguments(QVariantList() << accountId.toULongLong());
+    sendFailure->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(accountId.toULongLong())));
     sendFailure->setHintValue("x-nemo.email.sendFailed-accountId", accountId.toULongLong());
     sendFailure->setPreviewSummary(summary);
     sendFailure->setPreviewBody(previewBody);
