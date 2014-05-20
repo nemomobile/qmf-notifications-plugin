@@ -408,6 +408,14 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
         }
     }
 
+    // Check if there are messages queued to send, transmition failed can be emitted for account testing or by other processes
+    // working with the mail store.
+    QMailMessageKey outboxFilter(QMailMessageKey::status(QMailMessage::Outbox) & ~QMailMessageKey::status(QMailMessage::Trash));
+    QMailMessageKey accountKey(QMailMessageKey::parentAccountId(accountId));
+    if (!QMailStore::instance()->countMessages(accountKey & outboxFilter)) {
+        return;
+    }
+
     Notification *sendFailure = new Notification(this);
     QMailAccount account(accountId);
     QString accountName = account.name();
