@@ -316,11 +316,13 @@ bool MailStoreObserver::publishedNotification()
                 _publishedItemCount = publishedNotification->itemCount();
                 _publishedMessages = publishedMessages;
                 _notification->setReplacesId(_replacesId);
+                qDeleteAll(publishedNotifications);
                 return true;
             }
         }
     }
     _publishedItemCount = 0;
+    qDeleteAll(publishedNotifications);
     return false;
 }
 
@@ -394,7 +396,9 @@ void MailStoreObserver::transmitCompleted(const QMailAccountId &accountId)
             }
         }
     }
+    qDeleteAll(publishedNotifications);
 }
+
 void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
 {
     QList<QObject*> publishedNotifications = _notification->notifications();
@@ -403,10 +407,13 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
         for (int i = 0; i < publishedNotifications.size(); i++) {
             Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
             if (publishedNotification->hintValue("x-nemo.email.sendFailed-accountId").toULongLong() == accountId.toULongLong()) {
+                qDeleteAll(publishedNotifications);
                 return;
             }
         }
     }
+
+    qDeleteAll(publishedNotifications);
 
     // Check if there are messages queued to send, transmition failed can be emitted for account testing or by other processes
     // working with the mail store.
