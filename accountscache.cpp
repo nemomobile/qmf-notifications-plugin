@@ -48,14 +48,17 @@ void AccountsCache::initCache()
 
     foreach (Accounts::AccountId accountId, accountIDList) {
         Accounts::Account* account = _manager->account(accountId);
-        if (account->enabled())
+        if (account->enabled()) {
             _accountsList.insert(accountId, account);
+        } else {
+            delete account;
+        }
     }
 }
 
 bool AccountsCache::isEnabledMailAccount(const Accounts::AccountId accountId)
 {
-    Accounts::Account *account = _manager->account(accountId);
+    QScopedPointer<Accounts::Account> account(_manager->account(accountId));
     if (!account)
         return false;
 
