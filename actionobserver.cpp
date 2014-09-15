@@ -248,7 +248,7 @@ void ActionObserver::actionsChanged(QList<QSharedPointer<QMailActionInfo> > acti
 void ActionObserver::actionCompleted(quint64 id)
 {
     Q_ASSERT(_runningActions.contains(id));
-    _runningActions.remove(id);
+    _runningActions.take(id)->deleteLater();
     _completedActions.append(id);
 }
 
