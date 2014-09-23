@@ -101,12 +101,13 @@ QString requestTypeToString(QMailServerRequestType t)
 RunningAction::RunningAction(QSharedPointer<QMailActionInfo> action,
                              AccountsCache *accountsCache, QObject *parent) :
     QObject(parent),
+    _progress(0.0),
+    _transferId(0),
     _runningInTransferEngine(false),
     _action(action),
     _accountsCache(accountsCache),
     _transferClient(new TransferEngineClient(this))
 {
-    _progress = 0.0;
     connect(_action.data(), SIGNAL(activityChanged(QMailServiceAction::Activity)),
             this, SLOT(activityChanged(QMailServiceAction::Activity)));
     connect(_action.data(), SIGNAL(statusAccountIdChanged(const QMailAccountId&)),
