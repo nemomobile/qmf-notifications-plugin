@@ -38,6 +38,8 @@
 
 NotificationsPlugin::NotificationsPlugin(QObject *parent)
     : QMailMessageServerPlugin(parent)
+    , _actionObserver(new ActionObserver(this))
+    , _mailStoreObserver(new MailStoreObserver(this))
 {
     QString translationPath("/usr/share/translations/");
     QTranslator *engineeringEnglish = new QTranslator(this);
@@ -60,9 +62,6 @@ NotificationsPlugin* NotificationsPlugin::createService()
 
 void NotificationsPlugin::exec()
 {
-    _actionObserver = new ActionObserver(this);
-    _mailStoreObserver = new MailStoreObserver(this);
-
     // Connect actions observer to mail store observer
     // to report when all actions are completed and
     // only then emit notifications.
