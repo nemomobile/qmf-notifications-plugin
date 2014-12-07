@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013-2014 Jolla Ltd.
  * Contact: Valerio Valerio <valerio.valerio@jollamobile.com>
+ *
+ * This file is part of qmf-notifications-plugin
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -35,8 +37,12 @@
 
 #include "actionobserver.h"
 #include "mailstoreobserver.h"
-#include <QtPlugin>
+
+// QMF
 #include <qmailmessageserverplugin.h>
+
+// Qt
+#include <QtPlugin>
 
 class NotificationsPlugin : public QMailMessageServerPlugin
 {

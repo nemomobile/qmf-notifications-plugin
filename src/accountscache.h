@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013-2014 Jolla Ltd.
  * Contact: Valerio Valerio <valerio.valerio@jollamobile.com>
+ *
+ * This file is part of qmf-notifications-plugin
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -33,12 +35,15 @@
 #ifndef ACCOUNTSCACHE_H
 #define ACCOUNTSCACHE_H
 
-#include <QObject>
-#include <QUrl>
-#include <QDebug>
+// accounts-qt
 #include <Accounts/Manager>
 #include <Accounts/Account>
 #include <ssoaccountmanager.h>
+
+// Qt
+#include <QObject>
+#include <QUrl>
+#include <QDebug>
 
 struct AccountInfo
 {
