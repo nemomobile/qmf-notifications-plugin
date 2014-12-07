@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013-2014 Jolla Ltd.
  * Contact: Valerio Valerio <valerio.valerio@jollamobile.com>
+ *
+ * This file is part of qmf-notifications-plugin
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -33,10 +35,15 @@
 #ifndef MAILSTOREOBSERVER_H
 #define MAILSTOREOBSERVER_H
 
+// nemonotifications-qt5
+#include <notification.h>
+
+// QMF
+#include <qmailstore.h>
+
+// Qt
 #include <QObject>
 #include <QSharedPointer>
-#include <qmailstore.h>
-#include <notification.h>
 
 struct MessageInfo
 {

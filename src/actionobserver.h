@@ -1,6 +1,8 @@
 /*
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013-2014 Jolla Ltd.
  * Contact: Valerio Valerio <valerio.valerio@jollamobile.com>
+ *
+ * This file is part of qmf-notifications-plugin
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -35,9 +37,14 @@
 
 #include "accountscache.h"
 
-#include <QObject>
+// nemotransferengine-qt5
 #include <transferengineclient.h>
+
+// QMF
 #include <qmailserviceaction.h>
+
+// Qt
+#include <QObject>
 
 class RunningAction : public QObject
 {
