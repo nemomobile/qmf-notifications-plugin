@@ -9,7 +9,7 @@ Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(qmfclient5)
 BuildRequires:  pkgconfig(qmfmessageserver5)
-BuildRequires:  pkgconfig(accounts-qt5)
+BuildRequires:  pkgconfig(accounts-qt5) >= 1.13
 BuildRequires:  pkgconfig(nemotransferengine-qt5)
 BuildRequires:  pkgconfig(nemonotifications-qt5)
 BuildRequires:  qt5-qttools-linguist
