@@ -51,7 +51,7 @@ void AccountsCache::initCache()
     Accounts::AccountIdList accountIDList = _manager->accountListEnabled("e-mail");
 
     foreach (Accounts::AccountId accountId, accountIDList) {
-        Accounts::Account* account = _manager->account(accountId);
+        Accounts::Account* account = Accounts::Account::fromId(_manager, accountId, this);
         if (account->enabled()) {
             _accountsList.insert(accountId, account);
         } else {
@@ -62,7 +62,7 @@ void AccountsCache::initCache()
 
 bool AccountsCache::isEnabledMailAccount(const Accounts::AccountId accountId)
 {
-    QScopedPointer<Accounts::Account> account(_manager->account(accountId));
+    QScopedPointer<Accounts::Account> account(Accounts::Account::fromId(_manager, accountId, this));
     if (!account)
         return false;
 
@@ -79,7 +79,7 @@ bool AccountsCache::isEnabledMailAccount(const Accounts::AccountId accountId)
 void AccountsCache::accountCreated(Accounts::AccountId accountId)
 {
     if (isEnabledMailAccount(accountId)) {
-        Accounts::Account *account = _manager->account(accountId);
+        Accounts::Account *account = Accounts::Account::fromId(_manager, accountId, this);
         _accountsList.insert(accountId, account);
     }
 }
@@ -95,7 +95,7 @@ void AccountsCache::enabledEvent(Accounts::AccountId accountId)
 {
     if (isEnabledMailAccount(accountId)) {
         if (!_accountsList.contains(accountId)) {
-            Accounts::Account* account = _manager->account(accountId);
+            Accounts::Account* account = Accounts::Account::fromId(_manager, accountId, this);
             _accountsList.insert(accountId, account);
         }
     } else if (_accountsList.contains(accountId)) {
