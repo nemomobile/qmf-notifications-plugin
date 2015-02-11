@@ -44,7 +44,6 @@
 NotificationsPlugin::NotificationsPlugin(QObject *parent)
     : QMailMessageServerPlugin(parent)
     , _actionObserver(new ActionObserver(this))
-    , _mailStoreObserver(new MailStoreObserver(this))
 {
     QString translationPath("/usr/share/translations/");
     QTranslator *engineeringEnglish = new QTranslator(this);
@@ -54,6 +53,9 @@ NotificationsPlugin::NotificationsPlugin(QObject *parent)
     QTranslator *translator = new QTranslator(this);
     translator->load(QLocale(), "qmf-notifications", "-", translationPath);
     QCoreApplication::instance()->installTranslator(translator);
+
+    // Initiate after the translator since it will use it
+    _mailStoreObserver = new MailStoreObserver(this);
 }
 
 NotificationsPlugin::~NotificationsPlugin()
