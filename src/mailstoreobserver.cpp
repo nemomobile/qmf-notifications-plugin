@@ -38,6 +38,15 @@
 #include <QDBusConnection>
 #include <QDebug>
 
+namespace {
+
+QVariant remoteAction(const QString &name, const QString &displayName, const QString &method, const QVariantList &arguments = QVariantList())
+{
+    return Notification::remoteAction(name, displayName, "com.jolla.email.ui", "/com/jolla/email/ui", "com.jolla.email.ui", method, arguments);
+}
+
+}
+
 MailStoreObserver::MailStoreObserver(QObject *parent) :
     QObject(parent),
     _newMessagesCount(0),
@@ -51,9 +60,6 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     qDebug() << "Store observer initialized";
     _storage = QMailStore::instance();
     _notification->setCategory("x-nemo.email");
-    _notification->setRemoteDBusCallServiceName("com.jolla.email.ui");
-    _notification->setRemoteDBusCallObjectPath("/com/jolla/email/ui");
-    _notification->setRemoteDBusCallInterface("com.jolla.email.ui");
 
     connect(_storage, SIGNAL(messagesAdded(const QMailMessageIdList&)),
             this, SLOT(addMessages(const QMailMessageIdList&)));
@@ -255,6 +261,8 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
         }
 
         if (!msgInfo.isNull()) {
+            QVariant acctId = static_cast<int>(msgInfo.data()->id.toULongLong());
+
             // If is a new message just added, notify the user.
             if (showPreview && !_appOnScreen) {
                 _notification->setPreviewBody(msgInfo.data()->subject);
@@ -265,8 +273,7 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
             _notification->setSummary(msgInfo.data()->sender);
             _notification->setBody(msgInfo.data()->subject);
             _notification->setTimestamp(msgInfo.data()->timeStamp);
-            _notification->setRemoteDBusCallMethodName("openMessage");
-            _notification->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(msgInfo.data()->id.toULongLong())));
+            _notification->setRemoteAction(::remoteAction("default", "", "openMessage", QVariantList() << acctId));
         } else {
             qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
         }
@@ -288,8 +295,7 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
         _notification->setTimestamp(lastestPublishedMessageTimeStamp());
 
         if (notificationsFromMultipleAccounts()) {
-            _notification->setRemoteDBusCallMethodName("openCombinedInbox");
-            _notification->setRemoteDBusCallArguments(QVariantList());
+            _notification->setRemoteAction(::remoteAction("default", "", "openCombinedInbox"));
         } else {
             QSharedPointer<MessageInfo> msgInfo = messageInfo();
             QVariant acctId;
@@ -299,8 +305,7 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
                 qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
                 acctId = 0;
             }
-            _notification->setRemoteDBusCallMethodName("openInbox");
-            _notification->setRemoteDBusCallArguments(QVariantList() << acctId);
+            _notification->setRemoteAction(::remoteAction("default", "", "openInbox", QVariantList() << acctId));
         }
     }
 }
@@ -390,7 +395,7 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
 
 void MailStoreObserver::transmitCompleted(const QMailAccountId &accountId)
 {
-    QList<QObject*> publishedNotifications = _notification->notifications();
+    QList<QObject*> publishedNotifications = Notification::notifications();
 
     if (publishedNotifications.size()) {
         for (int i = 0; i < publishedNotifications.size(); i++) {
@@ -405,7 +410,7 @@ void MailStoreObserver::transmitCompleted(const QMailAccountId &accountId)
 
 void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
 {
-    QList<QObject*> publishedNotifications = _notification->notifications();
+    QList<QObject*> publishedNotifications = Notification::notifications();
 
     if (publishedNotifications.size()) {
         for (int i = 0; i < publishedNotifications.size(); i++) {
@@ -427,9 +432,10 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
         return;
     }
 
-    Notification *sendFailure = new Notification(this);
     QMailAccount account(accountId);
     QString accountName = account.name();
+    QVariant acctId = static_cast<int>(accountId.toULongLong());
+
     //: Summary of email sending failed notification
     //% "Email sending failed"
     QString summary = qtTrId("qmf-notification_send_failed_summary");
@@ -440,18 +446,15 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
     //% "Account %1"
     QString body = qtTrId("qmf-notification_send_failed_Body").arg(accountName);
 
-    sendFailure->setCategory("x-nemo.email.error");
-    sendFailure->setRemoteDBusCallServiceName("com.jolla.email.ui");
-    sendFailure->setRemoteDBusCallObjectPath("/com/jolla/email/ui");
-    sendFailure->setRemoteDBusCallInterface("com.jolla.email.ui");
-    sendFailure->setRemoteDBusCallMethodName("openOutbox");
-    sendFailure->setRemoteDBusCallArguments(QVariantList() << QVariant(static_cast<int>(accountId.toULongLong())));
-    sendFailure->setHintValue("x-nemo.email.sendFailed-accountId", accountId.toULongLong());
-    sendFailure->setPreviewSummary(summary);
-    sendFailure->setPreviewBody(previewBody);
-    sendFailure->setSummary(summary);
-    sendFailure->setBody(body);
-    sendFailure->publish();
+    Notification sendFailure;
+    sendFailure.setCategory("x-nemo.email.error");
+    sendFailure.setHintValue("x-nemo.email.sendFailed-accountId", accountId.toULongLong());
+    sendFailure.setPreviewSummary(summary);
+    sendFailure.setPreviewBody(previewBody);
+    sendFailure.setSummary(summary);
+    sendFailure.setBody(body);
+    sendFailure.setRemoteAction(::remoteAction("default", "", "openOutbox", QVariantList() << acctId));
+    sendFailure.publish();
 }
 
 void MailStoreObserver::setNotifyOn()
