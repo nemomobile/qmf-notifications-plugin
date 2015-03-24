@@ -293,8 +293,8 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
         }
     } else {
         //: Summary of new email(s) notification
-        //% "You have %n new email(s)"
-        QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
+        //% "%n new email(s)"
+        QString summary = qtTrId("qmf-notification_new_email_notification_text", newCount);
         _notification->setSummary(summary);
         if (showPreview  && !_appOnScreen) {
             //: Notification preview of new email(s)
