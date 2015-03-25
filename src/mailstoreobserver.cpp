@@ -45,6 +45,16 @@ QVariant remoteAction(const QString &name, const QString &displayName, const QSt
     return Notification::remoteAction(name, displayName, "com.jolla.email.ui", "/com/jolla/email/ui", "com.jolla.email.ui", method, arguments);
 }
 
+QVariantList remoteActionList(const QString &name, const QString &displayName, const QString &method, const QVariantList &arguments = QVariantList())
+{
+    QVariantList rv;
+
+    rv.append(remoteAction(name, displayName, method, arguments));
+    rv.append(remoteAction("app", "", "openCombinedInbox"));
+
+    return rv;
+}
+
 }
 
 MailStoreObserver::MailStoreObserver(QObject *parent) :
@@ -59,6 +69,10 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
 {
     qDebug() << "Store observer initialized";
     _storage = QMailStore::instance();
+
+    //: Name of notification group for mail notifications
+    //% "Email"
+    _notification->setAppName(qtTrId("qmf-notification_group"));
     _notification->setCategory("x-nemo.email");
 
     connect(_storage, SIGNAL(messagesAdded(const QMailMessageIdList&)),
@@ -200,9 +214,6 @@ void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
         }
     } else {
         publishNotifications(showPreview, newCount);
-        _notification->setItemCount(newCount);
-        _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
-        _notification->publish();
 
         // Reset count
         _oldMessagesCount = 0;
@@ -249,6 +260,9 @@ QString MailStoreObserver::publishedMessageIds()
 
 void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
 {
+    _notification->setItemCount(newCount);
+    _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
+
     if (newCount == 1) {
         QSharedPointer<MessageInfo> msgInfo;
         if (_newMessagesCount) {
@@ -273,14 +287,14 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
             _notification->setSummary(msgInfo.data()->sender);
             _notification->setBody(msgInfo.data()->subject);
             _notification->setTimestamp(msgInfo.data()->timeStamp);
-            _notification->setRemoteAction(::remoteAction("default", "", "openMessage", QVariantList() << acctId));
+            _notification->setRemoteActions(::remoteActionList("default", "", "openMessage", QVariantList() << acctId));
         } else {
             qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
         }
     } else {
         //: Summary of new email(s) notification
-        //% "You have %n new email(s)"
-        QString summary = qtTrId("qmf-notification_new_email_notification", newCount);
+        //% "%n new email(s)"
+        QString summary = qtTrId("qmf-notification_new_email_notification_text", newCount);
         _notification->setSummary(summary);
         if (showPreview  && !_appOnScreen) {
             //: Notification preview of new email(s)
@@ -295,7 +309,7 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
         _notification->setTimestamp(lastestPublishedMessageTimeStamp());
 
         if (notificationsFromMultipleAccounts()) {
-            _notification->setRemoteAction(::remoteAction("default", "", "openCombinedInbox"));
+            _notification->setRemoteActions(::remoteActionList("default", "", "openCombinedInbox"));
         } else {
             QSharedPointer<MessageInfo> msgInfo = messageInfo();
             QVariant acctId;
@@ -305,16 +319,18 @@ void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
                 qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
                 acctId = 0;
             }
-            _notification->setRemoteAction(::remoteAction("default", "", "openInbox", QVariantList() << acctId));
+            _notification->setRemoteActions(::remoteActionList("default", "", "openInbox", QVariantList() << acctId));
         }
     }
+
+    _notification->publish();
 }
 
 // Checks if there is a published notification for this app with hint value
 // 'x-nemo.email.published-messages'
 bool MailStoreObserver::publishedNotification()
 {
-    QList<QObject*> publishedNotifications = _notification->notifications();
+    QList<QObject*> publishedNotifications = Notification::notifications();
 
     if (publishedNotifications.size()) {
         for (int i = 0; i < publishedNotifications.size(); i++) {
@@ -445,8 +461,12 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
     //: Body of email sending failed notification
     //% "Account %1"
     QString body = qtTrId("qmf-notification_send_failed_Body").arg(accountName);
+    //: Name of notification group for error notifications
+    //% "Warnings"
+    QString appName = qtTrId("qmf-notification_error_group");
 
     Notification sendFailure;
+    sendFailure.setAppName(appName);
     sendFailure.setCategory("x-nemo.email.error");
     sendFailure.setHintValue("x-nemo.email.sendFailed-accountId", accountId.toULongLong());
     sendFailure.setPreviewSummary(summary);
