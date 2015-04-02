@@ -1,6 +1,6 @@
 Name:       qmf-notifications-plugin
 Summary:    Notifications plugin for Qt Messaging Framework (QMF)
-Version:    0.0.29
+Version:    0.0.30
 Release:    1
 Group:      System/Libraries
 License:    BSD
@@ -11,7 +11,7 @@ BuildRequires:  pkgconfig(qmfclient5)
 BuildRequires:  pkgconfig(qmfmessageserver5)
 BuildRequires:  pkgconfig(accounts-qt5) >= 1.13
 BuildRequires:  pkgconfig(nemotransferengine-qt5)
-BuildRequires:  pkgconfig(nemonotifications-qt5) >= 1.0.4
+BuildRequires:  pkgconfig(nemonotifications-qt5) >= 1.0.5
 BuildRequires:  qt5-qttools-linguist
 
 %description
