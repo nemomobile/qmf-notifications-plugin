@@ -1,6 +1,6 @@
 Name:       qmf-notifications-plugin
 Summary:    Notifications plugin for Qt Messaging Framework (QMF)
-Version:    0.0.30
+Version:    0.0.31
 Release:    1
 Group:      System/Libraries
 License:    BSD
