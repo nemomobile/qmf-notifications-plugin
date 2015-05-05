@@ -33,7 +33,8 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 %{_libdir}/qmf/plugins5/messageserverplugins/libnotifications.so
-%{_datadir}/lipstick/notificationcategories/*.conf
+%{_datadir}/lipstick/notificationcategories/x-nemo.email.conf
+%{_datadir}/lipstick/notificationcategories/x-nemo.email.error.conf
 
 %{_datadir}/translations/qmf-notifications_eng_en.qm
 

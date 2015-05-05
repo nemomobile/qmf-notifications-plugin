@@ -48,7 +48,6 @@
 struct MessageInfo
 {
     QMailMessageId id;
-    QString origin;
     QString sender;
     QString subject;
     QDateTime timeStamp;
@@ -72,20 +71,31 @@ private slots:
     void setNotifyOff();
     
 private:
-    typedef QHash<QMailMessageId, QSharedPointer<MessageInfo> > MessageHash;
-
-    bool _publicationChanges;
+    int _newMessagesCount;
+    int _publishedItemCount;
+    int _oldMessagesCount;
     bool _appOnScreen;
+    uint _replacesId;
+    QString _publishedMessages;
     QMailStore *_storage;
-    MessageHash _publishedMessages;
-    QSet<QMailMessageId> _newMessages;
+    Notification *_notification;
+    QHash<QMailMessageId, QSharedPointer<MessageInfo> > _publishedMessageList;
+    QMailAccountIdList _enabledAccounts;
+    QMailMessageId _lastReceivedId;
 
-    void reloadNotifications();
     void closeNotifications();
-    QSharedPointer<MessageInfo> constructMessageInfo(const QMailMessageMetaData &message);
+    MessageInfo* constructMessageInfo(const QMailMessageMetaData &message);
+    QDateTime lastestPublishedMessageTimeStamp();
+    QSharedPointer<MessageInfo> messageInfo(const QMailMessageId id = QMailMessageId());
+    bool notificationsFromMultipleAccounts();
     bool notifyMessage(const QMailMessageMetaData &message);
     void notifyOnly();
-    void updateNotifications();
+    void reformatNotification(bool showPreview, int newCount);
+    void reformatPublishedMessages();
+    QString publishedMessageIds();
+    void publishNotifications(bool showPreview, int newCount);
+    bool publishedNotification();
+    void updateNotificationCount();
 };
 
 #endif // MAILSTOREOBSERVER_H
