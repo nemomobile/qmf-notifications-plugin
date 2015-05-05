@@ -59,11 +59,21 @@ QVariantList remoteActionList(const QString &name, const QString &displayName, c
 
 MailStoreObserver::MailStoreObserver(QObject *parent) :
     QObject(parent),
-    _publicationChanges(false),
+    _newMessagesCount(0),
+    _publishedItemCount(0),
+    _oldMessagesCount(0),
     _appOnScreen(false),
-    _storage(0)
+    _replacesId(0),
+    _notification(new Notification(this)),
+    _lastReceivedId(0)
 {
+    qDebug() << "Store observer initialized";
     _storage = QMailStore::instance();
+
+    //: Name of notification group for mail notifications
+    //% "Email"
+    _notification->setAppName(qtTrId("qmf-notification_group"));
+    _notification->setCategory("x-nemo.email");
 
     connect(_storage, SIGNAL(messagesAdded(const QMailMessageIdList&)),
             this, SLOT(addMessages(const QMailMessageIdList&)));
@@ -72,8 +82,18 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     connect(_storage, SIGNAL(messagesRemoved(const QMailMessageIdList&)),
             this, SLOT(removeMessages(const QMailMessageIdList&)));
 
-    reloadNotifications();
-    updateNotifications();
+    // If something goes wrong (e.g crash), we keep proper states,
+    // if there is a published notification it will be reformated.
+    if (publishedNotification()) {
+        if (!_publishedMessages.isEmpty()) {
+            qDebug() << "Reformating published messages " <<  _publishedMessages;
+            reformatPublishedMessages();
+        } else {
+            closeNotifications();
+        }
+    } else {
+        qDebug() << "No published notification!";
+    }
 
     QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayEntered",
                                           this, SLOT(setNotifyOff()));
@@ -81,85 +101,75 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
                                           this, SLOT(setNotifyOn()));
 }
 
-void MailStoreObserver::reloadNotifications()
-{
-    QSet<QMailMessageId> publishedMessageIds;
-
-    // Find the set of messages we've previously published notifications for
-    QList<QObject *> existingNotifications(Notification::notifications());
-    foreach (QObject *obj, existingNotifications) {
-        if (Notification *notification = qobject_cast<Notification *>(obj)) {
-            const QString origin(notification->hintValue("x-nemo.email.published-origin").toString());
-            if (!origin.isEmpty()) {
-                const QString messageIds(notification->hintValue("x-nemo.email.published-message-ids").toString());
-
-                QList<QMailMessageId> ids;
-                foreach (const QString &id, messageIds.split(",", QString::SkipEmptyParts)) {
-                    ids.append(QMailMessageId(id.toULongLong()));
-                }
-
-                if (!ids.isEmpty()) {
-                    publishedMessageIds.unite(ids.toSet());
-                } else {
-                    notification->close();
-                }
-            } else {
-                notification->close();
-            }
-        }
-    }
-    qDeleteAll(existingNotifications);
-
-    if (!publishedMessageIds.isEmpty()) {
-        QMailAccountIdList enabledAccounts(QMailStore::instance()->queryAccounts(QMailAccountKey::messageType(QMailMessage::Email)
-                                                                               & QMailAccountKey::status(QMailAccount::Enabled)));
-
-        foreach (const QMailMessageId &messageId, publishedMessageIds) {
-            const QMailMessageMetaData message(messageId);
-
-            // Checks if parent account is still valid
-            // accounts can be removed when messageServer is not running.
-            if (enabledAccounts.contains(message.parentAccountId())) {
-                if (notifyMessage(message)) {
-                    _publishedMessages.insert(messageId, constructMessageInfo(message));
-                }
-            }
-        }
-    }
-}
-
 // Close existent notification
 void MailStoreObserver::closeNotifications()
 {
-    QList<QObject *> existingNotifications(Notification::notifications());
-    foreach (QObject *obj, existingNotifications) {
-        if (Notification *notification = qobject_cast<Notification *>(obj)) {
-            notification->close();
-
-            const QString messageIds(notification->hintValue("x-nemo.email.published-message-ids").toString());
-            if (!messageIds.isEmpty()) {
-                // We're no longer publishing these messages
-                foreach (const QString &id, messageIds.split(",", QString::SkipEmptyParts)) {
-                    _publishedMessages.remove(QMailMessageId(id.toULongLong()));
-                }
-            }
-        }
-    }
-    qDeleteAll(existingNotifications);
+    qDebug() << "Closing notification " << _replacesId;
+    _notification->close();
+    _publishedItemCount = 0;
+    _newMessagesCount = 0;
+    _oldMessagesCount = 0;
+    _publishedMessageList.clear();
 }
 
 // Contructs messageInfo object from a email message
-QSharedPointer<MessageInfo> MailStoreObserver::constructMessageInfo(const QMailMessageMetaData &message)
+MessageInfo* MailStoreObserver::constructMessageInfo(const QMailMessageMetaData &message)
 {
     MessageInfo* messageInfo = new MessageInfo();
     messageInfo->id = message.id();
-    messageInfo->origin = message.from().address().toLower();
-    messageInfo->sender = message.from().name();
+    if (message.from().name().isEmpty()) {
+        messageInfo->sender = message.from().toString();
+    } else {
+        messageInfo->sender = message.from().name();
+    }
     messageInfo->subject = message.subject();
     messageInfo->timeStamp = message.date().toUTC();
     messageInfo->accountId = message.parentAccountId();
 
-    return QSharedPointer<MessageInfo>(messageInfo);
+    return messageInfo;
+}
+
+QDateTime MailStoreObserver::lastestPublishedMessageTimeStamp()
+{
+    QDateTime lastestTimeStamp;
+    foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList) {
+        if (msgInfo->timeStamp >= lastestTimeStamp) {
+            lastestTimeStamp = msgInfo->timeStamp;
+        }
+    }
+    return lastestTimeStamp;
+}
+
+// Returns messageInfo object from the list of published messages
+QSharedPointer<MessageInfo> MailStoreObserver::messageInfo(const QMailMessageId id)
+{
+    if (_publishedMessageList.size()) {
+        // Get one value
+        if (!id.isValid()) {
+            foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList)
+                return msgInfo;
+        } else {
+            Q_ASSERT(_publishedMessageList.contains(id));
+            return _publishedMessageList.value(id);
+        }
+    }
+    return QSharedPointer<MessageInfo>();
+}
+
+// Check if we have messages from more than one account
+bool MailStoreObserver::notificationsFromMultipleAccounts()
+{
+    uint accountId = 0;
+    foreach (QSharedPointer<MessageInfo> msgInfo, _publishedMessageList) {
+        if (accountId == 0) {
+            accountId = msgInfo->accountId.toULongLong();
+        } else {
+            if (accountId != msgInfo->accountId.toULongLong()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // Check if this message should be notified, old messages are not
@@ -180,164 +190,192 @@ bool MailStoreObserver::notifyMessage(const QMailMessageMetaData &message)
 // App is on screen beep only
 void MailStoreObserver::notifyOnly()
 {
-    Notification notification;
-    notification.setCategory("x-nemo.email.summary");
-    notification.publish();
+    _notification->setPreviewSummary(QString());
+    _notification->setPreviewBody(QString());
+    _notification->setSummary(QString());
+    _notification->setBody(QString());
+    _notification->publish();
+    // Close notification and reset the counters
+    closeNotifications();
 }
 
-void MailStoreObserver::updateNotifications()
+void MailStoreObserver::reformatNotification(bool showPreview, int newCount)
 {
-    QHash<QString, QList<QMailMessageId> > senderMessages;
-
-    // Group the set of publishable messages by sender
-    MessageHash::const_iterator it = _publishedMessages.constBegin(), end = _publishedMessages.constEnd();
-    for ( ; it != end; ++it) {
-        senderMessages[it.value()->origin].append(it.key());
-    }
-
-    QHash<QString, uint> existingSenderNotificationIds;
-
-    // Remove any existing notifications whose sender no longer has published messages
-    QList<QObject *> existingNotifications(Notification::notifications());
-    foreach (QObject *obj, existingNotifications) {
-        if (Notification *notification = qobject_cast<Notification *>(obj)) {
-            const QString origin(notification->hintValue("x-nemo.email.published-origin").toString());
-            if (origin.isEmpty() || !senderMessages.contains(origin)) {
-                notification->close();
-            } else {
-                existingSenderNotificationIds.insert(origin, notification->replacesId());
-            }
-        }
-    }
-    qDeleteAll(existingNotifications);
-
-    // Publish a notification for each sender who has qualifying messages
-    QHash<QString, QList<QMailMessageId> >::const_iterator sit = senderMessages.constBegin(), send = senderMessages.constEnd();
-    for ( ; sit != send; ++sit) {
-        const QString &origin(sit.key());
-        const QList<QMailMessageId> &messageIds(sit.value());
-
-        QStringList messageIdList;
-        foreach (const QMailMessageId &id, messageIds) {
-            messageIdList.append(QString::number(id.toULongLong()));
-        }
-
-        Notification notification;
-
-        //: Name of notification group for mail notifications
-        //% "Email"
-        notification.setAppName(qtTrId("qmf-notification_group"));
-        notification.setCategory("x-nemo.email");
-        notification.setHintValue("x-nemo.email.published-origin", origin);
-        notification.setHintValue("x-nemo.email.published-message-ids", messageIdList.join(","));
-
-        QHash<QString, uint>::iterator it(existingSenderNotificationIds.find(origin));
-        if (it != existingSenderNotificationIds.end()) {
-            // Replace the existing notification for this sender
-            notification.setReplacesId(it.value());
-        }
-
-        const int senderCount(messageIds.count());
-        if (senderCount == 1) {
-            // Only a single message from this address
-            const MessageInfo *message(_publishedMessages[messageIds.first()].data());
-
-            notification.setSummary(message->sender.isEmpty() ? message->origin : message->sender);
-            notification.setBody(message->subject);
-            notification.setTimestamp(message->timeStamp);
-            notification.setItemCount(1);
-
-            const QVariant msgId(static_cast<int>(messageIds.first().toULongLong()));
-            notification.setRemoteActions(::remoteActionList("default", "", "openMessage", QVariantList() << msgId));
+    // All messages read remove notification
+    if (newCount == 0) {
+        closeNotifications();
+        // App is on screen
+    } else if (_appOnScreen) {
+        // We got need messages, beep only
+        if (showPreview) {
+            notifyOnly();
         } else {
-            QString senderName;
-            QDateTime timestamp;
-            QSet<QMailAccountId> accountIds;
+            closeNotifications();
+        }
+    } else {
+        publishNotifications(showPreview, newCount);
 
-            foreach (const QMailMessageId &id, messageIds) {
-                const MessageInfo *message(_publishedMessages[id].data());
+        // Reset count
+        _oldMessagesCount = 0;
+        _newMessagesCount = 0;
 
-                // Find the name of this sender
-                if (senderName.isEmpty() && !message->sender.isEmpty()) {
-                    senderName = message->sender;
-                }
+        _publishedItemCount = _publishedMessageList.size();
+    }
+}
 
-                timestamp = qMax(timestamp, message->timeStamp);
+void MailStoreObserver::reformatPublishedMessages()
+{
+    _enabledAccounts = QMailStore::instance()->queryAccounts(QMailAccountKey::messageType(QMailMessage::Email)
+                                                             & QMailAccountKey::status(QMailAccount::Enabled));
 
-                // Find the accounts to which we have received messages from this sender
-                accountIds.insert(_publishedMessages[id]->accountId);
-            }
-
-            if (senderName.isEmpty()) {
-                senderName = origin;
-            }
-
-            //: Summary of new email(s) notification, %1 is the sender name/address
-            //% "%n new email(s) from %1"
-            QString summary = qtTrId("qmf-notification_new_emails_notification_text", senderCount);
-            notification.setSummary(summary.arg(senderName));
-
-            notification.setTimestamp(timestamp);
-            notification.setItemCount(senderCount);
-
-            if (accountIds.count() == 1) {
-                const QVariant acctId(static_cast<int>((*accountIds.constBegin()).toULongLong()));
-                notification.setRemoteActions(::remoteActionList("default", "", "openInbox", QVariantList() << acctId));
+    QStringList messageIdList = _publishedMessages.split(",", QString::SkipEmptyParts);
+    for (int i = 0; i < messageIdList.size(); ++i) {
+        QMailMessageId messageId(messageIdList.at(i).toInt());
+        QMailMessageMetaData message(messageId);
+        QMailAccountId accountId(message.parentAccountId());
+        // Checks if parent account is still valid
+        // accounts can be removed when messageServer is not running.
+        if (_enabledAccounts.contains(accountId)) {
+            if (notifyMessage(message)) {
+                _publishedMessageList.insert(messageId,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
             } else {
-                notification.setRemoteActions(::remoteActionList("default", "", "openCombinedInbox"));
+                // This message got read somewhere else
+                 _publishedItemCount--;
             }
         }
-
-        notification.publish();
     }
+    reformatNotification(false, _publishedMessageList.size());
+}
+
+QString MailStoreObserver::publishedMessageIds()
+{
+    Q_ASSERT(_publishedMessageList.size());
+    QStringList messageIdList;
+    QList<QMailMessageId> messageIds = _publishedMessageList.uniqueKeys();
+    foreach (const QMailMessageId &id, messageIds) {
+       messageIdList << QString::number(id.toULongLong());
+    }
+    return messageIdList.join(",");
+}
+
+void MailStoreObserver::publishNotifications(bool showPreview, int newCount)
+{
+    _notification->setItemCount(newCount);
+    _notification->setHintValue("x-nemo.email.published-messages", publishedMessageIds());
+
+    if (newCount == 1) {
+        QSharedPointer<MessageInfo> msgInfo;
+        if (_newMessagesCount) {
+            msgInfo = messageInfo(_lastReceivedId);
+        } else {
+            if (_publishedMessageList.size() > 1) {
+                qWarning() << Q_FUNC_INFO << "Published message list contains more than one item!";
+            }
+            msgInfo = messageInfo();
+        }
+
+        if (!msgInfo.isNull()) {
+            QVariant acctId = static_cast<int>(msgInfo.data()->id.toULongLong());
+
+            // If is a new message just added, notify the user.
+            if (showPreview && !_appOnScreen) {
+                _notification->setPreviewBody(msgInfo.data()->subject);
+                _notification->setPreviewSummary(msgInfo.data()->sender);
+            } else {
+                _notification->setPreviewSummary(QString());
+            }
+            _notification->setSummary(msgInfo.data()->sender);
+            _notification->setBody(msgInfo.data()->subject);
+            _notification->setTimestamp(msgInfo.data()->timeStamp);
+            _notification->setRemoteActions(::remoteActionList("default", "", "openMessage", QVariantList() << acctId));
+        } else {
+            qWarning() << Q_FUNC_INFO << "Failed to publish notification, invalid message info";
+        }
+    } else {
+        //: Summary of new email(s) notification
+        //% "%n new email(s)"
+        QString summary = qtTrId("qmf-notification_new_email_notification_text", newCount);
+        _notification->setSummary(summary);
+        if (showPreview  && !_appOnScreen) {
+            //: Notification preview of new email(s)
+            //% "You have %n new email(s)"
+            QString previewSummary = qtTrId("qmf-notification_new_email_banner_notification", _newMessagesCount);
+            _notification->setPreviewSummary(previewSummary);
+            _notification->setPreviewBody(QString());
+        } else {
+            _notification->setPreviewSummary(QString());
+        }
+        _notification->setBody(QString());
+        _notification->setTimestamp(lastestPublishedMessageTimeStamp());
+
+        if (notificationsFromMultipleAccounts()) {
+            _notification->setRemoteActions(::remoteActionList("default", "", "openCombinedInbox"));
+        } else {
+            QSharedPointer<MessageInfo> msgInfo = messageInfo();
+            QVariant acctId;
+            if (!msgInfo.isNull()) {
+                acctId = static_cast<int>(msgInfo.data()->accountId.toULongLong());
+            } else {
+                qWarning() << Q_FUNC_INFO << "Failed to get account information, invalid message info";
+                acctId = 0;
+            }
+            _notification->setRemoteActions(::remoteActionList("default", "", "openInbox", QVariantList() << acctId));
+        }
+    }
+
+    _notification->publish();
+}
+
+// Checks if there is a published notification for this app with hint value
+// 'x-nemo.email.published-messages'
+bool MailStoreObserver::publishedNotification()
+{
+    QList<QObject*> publishedNotifications = Notification::notifications();
+
+    if (publishedNotifications.size()) {
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            QString publishedMessages = publishedNotification->hintValue("x-nemo.email.published-messages").toString();
+            if (!publishedMessages.isEmpty()) {
+                _replacesId = publishedNotification->replacesId();
+                _publishedItemCount = publishedNotification->itemCount();
+                _publishedMessages = publishedMessages;
+                _notification->setReplacesId(_replacesId);
+                qDeleteAll(publishedNotifications);
+                return true;
+            }
+        }
+    }
+    _publishedItemCount = 0;
+    qDeleteAll(publishedNotifications);
+    return false;
 }
 
 // ################ Slots #####################
 
 void MailStoreObserver::actionsCompleted()
 {
-    if (_publicationChanges) {
-        _publicationChanges = false;
+    if (_oldMessagesCount > 0 || _newMessagesCount > 0) {
+        // if there's already a published notification use it
+        publishedNotification();
 
-        updateNotifications();
-
-        if (!_newMessages.isEmpty()) {
-            // Notify the user of new messages
-            if (_appOnScreen) {
-                notifyOnly();
-            } else {
-                Notification summaryNotification;
-                summaryNotification.setCategory("x-nemo.email.summary");
-
-                if (_newMessages.count() == 1) {
-                    const MessageInfo *message(_publishedMessages[*_newMessages.begin()].data());
-
-                    summaryNotification.setPreviewSummary(message->sender.isEmpty() ? message->origin : message->sender);
-                    summaryNotification.setPreviewBody(message->subject);
-                } else {
-                    //: Summary of new email(s) notification
-                    //% "You have %n new email(s)"
-                    summaryNotification.setPreviewSummary(qtTrId("qmf-notification_new_email_banner_notification", _newMessages.count()));
-                }
-
-                summaryNotification.publish();
-            }
-
-            _newMessages.clear();
+        if (_oldMessagesCount > _publishedItemCount) {
+            qWarning() << "Old message count is bigger than current published items count, reseting counter: old:"
+                       << _oldMessagesCount << " Published:" << _publishedItemCount << " New:" << _newMessagesCount;
         }
+        reformatNotification(_newMessagesCount ? true : false, _publishedMessageList.size());
     }
 }
 
 void MailStoreObserver::addMessages(const QMailMessageIdList &ids)
 {
     foreach (const QMailMessageId &id, ids) {
-        const QMailMessageMetaData message(id);
-
+        QMailMessageMetaData message(id);
         // Workaround for plugin that try to add same message twice
-        if (notifyMessage(message) && !_publishedMessages.contains(id)) {
-            _publishedMessages.insert(id, constructMessageInfo(message));
-            _newMessages.insert(id);
-            _publicationChanges = true;
+        if (notifyMessage(message) && !_publishedMessageList.contains(id)) {
+            _newMessagesCount++;
+            _publishedMessageList.insert(id,QSharedPointer<MessageInfo>(constructMessageInfo(message)));
+            _lastReceivedId = id;
         }
     }
 }
@@ -345,10 +383,9 @@ void MailStoreObserver::addMessages(const QMailMessageIdList &ids)
 void MailStoreObserver::removeMessages(const QMailMessageIdList &ids)
 {
     foreach (const QMailMessageId &id, ids) {
-        if (_publishedMessages.contains(id)) {
-            _publishedMessages.remove(id);
-            _newMessages.remove(id);
-            _publicationChanges = true;
+        if (_publishedMessageList.contains(id)) {
+            _oldMessagesCount++;
+            _publishedMessageList.remove(id);
         }
     }
     // Local action not handled by action observer
@@ -361,13 +398,12 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
     // from read to unread ???
 
     foreach (const QMailMessageId &id, ids) {
-        if (_publishedMessages.contains(id)) {
-            const QMailMessageMetaData message(id);
+        if (_publishedMessageList.contains(id)) {
+            QMailMessageMetaData message(id);
             // Check if message was read
             if (!notifyMessage(message)) {
-                _publishedMessages.remove(id);
-                _newMessages.remove(id);
-                _publicationChanges = true;
+                _oldMessagesCount++;
+                _publishedMessageList.remove(id);
             }
         }
     }
@@ -375,23 +411,35 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
 
 void MailStoreObserver::transmitCompleted(const QMailAccountId &accountId)
 {
-    const QVariant acctId(accountId.toULongLong());
+    QList<QObject*> publishedNotifications = Notification::notifications();
 
-    // If there is an existing failure for this notification, remove it
-    QList<QObject *> existingNotifications(Notification::notifications());
-    foreach (QObject *obj, existingNotifications) {
-        if (Notification *notification = qobject_cast<Notification *>(obj)) {
-            if (notification->hintValue("x-nemo.email.sendFailed-accountId") == accountId) {
-                notification->close();
-                break;
+    if (publishedNotifications.size()) {
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            if (publishedNotification->hintValue("x-nemo.email.sendFailed-accountId").toULongLong() == accountId.toULongLong()) {
+                publishedNotification->close();
             }
         }
     }
-    qDeleteAll(existingNotifications);
+    qDeleteAll(publishedNotifications);
 }
 
 void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
 {
+    QList<QObject*> publishedNotifications = Notification::notifications();
+
+    if (publishedNotifications.size()) {
+        for (int i = 0; i < publishedNotifications.size(); i++) {
+            Notification *publishedNotification = static_cast<Notification*>(publishedNotifications.at(i));
+            if (publishedNotification->hintValue("x-nemo.email.sendFailed-accountId").toULongLong() == accountId.toULongLong()) {
+                qDeleteAll(publishedNotifications);
+                return;
+            }
+        }
+    }
+
+    qDeleteAll(publishedNotifications);
+
     // Check if there are messages queued to send, transmition failed can be emitted for account testing or by other processes
     // working with the mail store.
     QMailMessageKey outboxFilter(QMailMessageKey::status(QMailMessage::Outbox) & ~QMailMessageKey::status(QMailMessage::Trash));
@@ -426,19 +474,6 @@ void MailStoreObserver::transmitFailed(const QMailAccountId &accountId)
     sendFailure.setSummary(summary);
     sendFailure.setBody(body);
     sendFailure.setRemoteAction(::remoteAction("default", "", "openOutbox", QVariantList() << acctId));
-
-    // If there is an existing failure for this notification, replace it
-    QList<QObject *> existingNotifications(Notification::notifications());
-    foreach (QObject *obj, existingNotifications) {
-        if (Notification *notification = qobject_cast<Notification *>(obj)) {
-            if (notification->hintValue("x-nemo.email.sendFailed-accountId") == accountId) {
-                sendFailure.setReplacesId(notification->replacesId());
-                break;
-            }
-        }
-    }
-    qDeleteAll(existingNotifications);
-
     sendFailure.publish();
 }
 
@@ -449,6 +484,9 @@ void MailStoreObserver::setNotifyOn()
 
 void MailStoreObserver::setNotifyOff()
 {
-    closeNotifications();
+    // App is on screen now, close the notification
+    if (_publishedItemCount > 0) {
+        closeNotifications();
+    }
     _appOnScreen = true;
 }
