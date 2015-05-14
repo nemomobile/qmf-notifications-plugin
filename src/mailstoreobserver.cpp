@@ -310,14 +310,39 @@ void MailStoreObserver::actionsCompleted()
                 summaryNotification.setCategory("x-nemo.email.summary");
 
                 if (_newMessages.count() == 1) {
-                    const MessageInfo *message(_publishedMessages[*_newMessages.begin()].data());
+                    const QMailMessageId messageId(*_newMessages.begin());
+                    const MessageInfo *message(_publishedMessages[messageId].data());
 
                     summaryNotification.setPreviewSummary(message->sender.isEmpty() ? message->origin : message->sender);
                     summaryNotification.setPreviewBody(message->subject);
+
+                    const QVariant varId(static_cast<int>(messageId.toULongLong()));
+                    summaryNotification.setRemoteAction(::remoteAction("default", "", "openMessage", QVariantList() << varId));
                 } else {
                     //: Summary of new email(s) notification
                     //% "You have %n new email(s)"
                     summaryNotification.setPreviewSummary(qtTrId("qmf-notification_new_email_banner_notification", _newMessages.count()));
+
+                    // Find if these messages are all for the same account
+                    QMailAccountId firstAccountId;
+                    foreach (const QMailMessageId &messageId, _newMessages) {
+                        const MessageInfo *message(_publishedMessages[messageId].data());
+                        if (!firstAccountId.isValid()) {
+                            firstAccountId = message->accountId;
+                        } else if (message->accountId != firstAccountId) {
+                            firstAccountId = QMailAccountId();
+                            break;
+                        }
+                    }
+
+                    if (firstAccountId.isValid()) {
+                        // Show the inbox for this account
+                        const QVariant varId(static_cast<int>(firstAccountId.toULongLong()));
+                        summaryNotification.setRemoteAction(::remoteAction("default", "", "openInbox", QVariantList() << varId));
+                    } else {
+                        // Multiple accounts - show the combined inbox
+                        summaryNotification.setRemoteAction(::remoteAction("default", "", "openCombinedInbox"));
+                    }
                 }
 
                 summaryNotification.publish();
