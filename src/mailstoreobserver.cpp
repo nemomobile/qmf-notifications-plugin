@@ -40,9 +40,13 @@
 
 namespace {
 
+const QString dbusService(QStringLiteral("com.jolla.email.ui"));
+const QString dbusPath(QStringLiteral("/com/jolla/email/ui"));
+const QString dbusInterface(QStringLiteral("com.jolla.email.ui"));
+
 QVariant remoteAction(const QString &name, const QString &displayName, const QString &method, const QVariantList &arguments = QVariantList())
 {
-    return Notification::remoteAction(name, displayName, "com.jolla.email.ui", "/com/jolla/email/ui", "com.jolla.email.ui", method, arguments);
+    return Notification::remoteAction(name, displayName, dbusService, dbusPath, dbusInterface, method, arguments);
 }
 
 QVariantList remoteActionList(const QString &name, const QString &displayName, const QString &method, const QVariantList &arguments = QVariantList())
@@ -75,10 +79,11 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
     reloadNotifications();
     updateNotifications();
 
-    QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayEntered",
-                                          this, SLOT(setNotifyOff()));
-    QDBusConnection::sessionBus().connect(QString(), "/com/jolla/email/ui", "com.jolla.email.ui", "displayExit",
-                                          this, SLOT(setNotifyOn()));
+    QDBusConnection dbusSession(QDBusConnection::sessionBus());
+    dbusSession.connect(QString(), dbusPath, dbusInterface, "displayEntered", this, SLOT(setNotifyOff()));
+    dbusSession.connect(QString(), dbusPath, dbusInterface, "displayExit", this, SLOT(setNotifyOn()));
+    dbusSession.connect(QString(), dbusPath, dbusInterface, "combinedInboxDisplayed", this, SLOT(combinedInboxDisplayed()));
+    dbusSession.connect(QString(), dbusPath, dbusInterface, "accountInboxDisplayed", this, SLOT(accountInboxDisplayed(int)));
 }
 
 void MailStoreObserver::reloadNotifications()
@@ -127,6 +132,25 @@ void MailStoreObserver::closeNotifications()
     qDeleteAll(existingNotifications);
 
     _publishedMessages.clear();
+}
+
+void MailStoreObserver::closeAccountNotifications(const QMailAccountId &accountId)
+{
+    QList<QObject *> existingNotifications(Notification::notifications());
+    foreach (QObject *obj, existingNotifications) {
+        if (Notification *notification = qobject_cast<Notification *>(obj)) {
+            const QString publishedId(notification->hintValue("x-nemo.email.published-message-id").toString());
+            const QMailMessageId messageId(QMailMessageId(publishedId.toULongLong()));
+            if (messageId.isValid()) {
+                const QMailMessageMetaData message(messageId);
+                if (message.parentAccountId() == accountId) {
+                    notification->close();
+                    _publishedMessages.remove(messageId);
+                }
+            }
+        }
+    }
+    qDeleteAll(existingNotifications);
 }
 
 // Contructs messageInfo object from a email message
@@ -398,6 +422,19 @@ void MailStoreObserver::setNotifyOn()
 
 void MailStoreObserver::setNotifyOff()
 {
-    closeNotifications();
     _appOnScreen = true;
 }
+
+void MailStoreObserver::combinedInboxDisplayed()
+{
+    closeNotifications();
+}
+
+void MailStoreObserver::accountInboxDisplayed(int accountId)
+{
+    QMailAccountId acctId(accountId);
+    if (acctId.isValid()) {
+        closeAccountNotifications(acctId);
+    }
+}
+
