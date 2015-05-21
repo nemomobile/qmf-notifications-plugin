@@ -70,8 +70,6 @@ private slots:
     void transmitFailed(const QMailAccountId &accountId);
     void setNotifyOn();
     void setNotifyOff();
-    void combinedInboxDisplayed();
-    void accountInboxDisplayed(int accountId);
     
 private:
     typedef QHash<QMailMessageId, QSharedPointer<MessageInfo> > MessageHash;
@@ -84,7 +82,6 @@ private:
 
     void reloadNotifications();
     void closeNotifications();
-    void closeAccountNotifications(const QMailAccountId &accountId);
     QSharedPointer<MessageInfo> constructMessageInfo(const QMailMessageMetaData &message);
     bool notifyMessage(const QMailMessageMetaData &message);
     void notifyOnly();
