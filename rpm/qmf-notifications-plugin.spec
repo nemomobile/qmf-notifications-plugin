@@ -1,6 +1,6 @@
 Name:       qmf-notifications-plugin
 Summary:    Notifications plugin for Qt Messaging Framework (QMF)
-Version:    0.0.33
+Version:    0.1.0
 Release:    1
 Group:      System/Libraries
 License:    BSD
@@ -33,8 +33,7 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 %{_libdir}/qmf/plugins5/messageserverplugins/libnotifications.so
-%{_datadir}/lipstick/notificationcategories/x-nemo.email.conf
-%{_datadir}/lipstick/notificationcategories/x-nemo.email.error.conf
+%{_datadir}/lipstick/notificationcategories/*.conf
 
 %{_datadir}/translations/qmf-notifications_eng_en.qm
 
