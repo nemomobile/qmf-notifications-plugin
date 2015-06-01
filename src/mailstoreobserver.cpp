@@ -59,6 +59,19 @@ QVariantList remoteActionList(const QString &name, const QString &displayName, c
     return rv;
 }
 
+QPair<QString, QString> accountProperties(const QMailAccountId &accountId)
+{
+    static QHash<QMailAccountId, QPair<QString, QString> > properties;
+
+    QHash<QMailAccountId, QPair<QString, QString> >::iterator it = properties.find(accountId);
+    if (it == properties.end()) {
+        // Add the properties for this account
+        QMailAccount account(accountId);
+        it = properties.insert(accountId, qMakePair(account.name(), account.iconPath()));
+    }
+    return *it;
+}
+
 }
 
 MailStoreObserver::MailStoreObserver(QObject *parent) :
@@ -217,9 +230,11 @@ void MailStoreObserver::updateNotifications()
 
         Notification notification;
 
-        //: Name of notification group for mail notifications
-        //% "Email"
-        notification.setAppName(qtTrId("qmf-notification_group"));
+        // Group emails by their source account name
+        QPair<QString, QString> properties(accountProperties(message->accountId));
+
+        notification.setAppName(properties.first);
+        notification.setAppIcon(properties.second);
         notification.setCategory("x-nemo.email");
         notification.setHintValue("x-nemo.email.published-message-id", QString::number(messageId.toULongLong()));
         notification.setSummary(message->sender.isEmpty() ? message->origin : message->sender);
@@ -266,6 +281,10 @@ void MailStoreObserver::actionsCompleted()
 
                     const QVariant varId(static_cast<int>(messageId.toULongLong()));
                     summaryNotification.setRemoteAction(::remoteAction("default", "", "openMessage", QVariantList() << varId));
+
+                    // Override the icon to be the icon associated with this account
+                    QMailAccount account(message->accountId);
+                    summaryNotification.setAppIcon(account.iconPath());
                 } else {
                     //: Summary of new email(s) notification
                     //% "You have %n new email(s)"
@@ -287,6 +306,10 @@ void MailStoreObserver::actionsCompleted()
                         // Show the inbox for this account
                         const QVariant varId(static_cast<int>(firstAccountId.toULongLong()));
                         summaryNotification.setRemoteAction(::remoteAction("default", "", "openInbox", QVariantList() << varId));
+
+                        // Also override the icon to be the icon associated with this account
+                        QMailAccount account(firstAccountId);
+                        summaryNotification.setAppIcon(account.iconPath());
                     } else {
                         // Multiple accounts - show the combined inbox
                         summaryNotification.setRemoteAction(::remoteAction("default", "", "openCombinedInbox"));
