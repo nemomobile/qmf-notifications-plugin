@@ -90,7 +90,6 @@ MailStoreObserver::MailStoreObserver(QObject *parent) :
             this, SLOT(removeMessages(const QMailMessageIdList&)));
 
     reloadNotifications();
-    updateNotifications();
 
     QDBusConnection dbusSession(QDBusConnection::sessionBus());
     dbusSession.connect(QString(), dbusPath, dbusInterface, "displayEntered", this, SLOT(setNotifyOff()));
@@ -222,11 +221,15 @@ void MailStoreObserver::updateNotifications()
     }
     qDeleteAll(existingNotifications);
 
-    // Publish/update a notification for each current message
+    // Update the notification for each current message that has been modified
     MessageHash::const_iterator it = _publishedMessages.constBegin(), end = _publishedMessages.constEnd();
     for ( ; it != end; ++it) {
         const QMailMessageId messageId(it.key());
         const MessageInfo *message(it.value().data());
+
+        // Only republish this message if it has been updated
+        if (!_updatedMessages.contains(messageId))
+            continue;
 
         Notification notification;
 
@@ -253,6 +256,8 @@ void MailStoreObserver::updateNotifications()
 
         notification.publish();
     }
+
+    _updatedMessages.clear();
 }
 
 // ################ Slots #####################
@@ -357,14 +362,20 @@ void MailStoreObserver::updateMessages(const QMailMessageIdList &ids)
     // from read to unread ???
 
     foreach (const QMailMessageId &id, ids) {
+        const QMailMessageMetaData message(id);
         if (_publishedMessages.contains(id)) {
-            const QMailMessageMetaData message(id);
             // Check if message was read
             if (!notifyMessage(message)) {
                 _publishedMessages.remove(id);
                 _newMessages.remove(id);
-                _publicationChanges = true;
+            } else {
+                _updatedMessages.insert(id);
             }
+            _publicationChanges = true;
+        } else if (notifyMessage(message)) {
+            _publishedMessages.insert(id, constructMessageInfo(message));
+            _updatedMessages.insert(id);
+            _publicationChanges = true;
         }
     }
 }
