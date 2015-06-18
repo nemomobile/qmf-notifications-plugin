@@ -228,7 +228,7 @@ void MailStoreObserver::updateNotifications()
         const MessageInfo *message(it.value().data());
 
         // Only republish this message if it has been updated
-        if (!_updatedMessages.contains(messageId))
+        if (!_updatedMessages.contains(messageId) && !_newMessages.contains(messageId))
             continue;
 
         Notification notification;
