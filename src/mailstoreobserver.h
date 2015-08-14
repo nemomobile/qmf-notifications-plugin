@@ -59,6 +59,8 @@ class MailStoreObserver : public QObject
 {
     Q_OBJECT
 public:
+    enum { MaxNotificationsPerAccount = 100 };
+
     explicit MailStoreObserver(QObject *parent = 0);
 
 private slots:

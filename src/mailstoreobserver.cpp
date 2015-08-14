@@ -72,6 +72,13 @@ QPair<QString, QString> accountProperties(const QMailAccountId &accountId)
     return *it;
 }
 
+struct MessageEarlierComparator {
+    bool operator()(const MessageInfo *lhs, const MessageInfo *rhs)
+    {
+        return lhs->timeStamp < rhs->timeStamp;
+    }
+};
+
 }
 
 MailStoreObserver::MailStoreObserver(QObject *parent) :
@@ -205,6 +212,38 @@ void MailStoreObserver::notifyOnly()
 void MailStoreObserver::updateNotifications()
 {
     QHash<QMailMessageId, int> existingMessageNotificationIds;
+
+    // Limit the maximum number of notifications published for any each account
+    if (_publishedMessages.count() > MaxNotificationsPerAccount) {
+        QHash<QMailAccountId, QList<const MessageInfo *> > accountMessages;
+
+        MessageHash::const_iterator it = _publishedMessages.constBegin(), end = _publishedMessages.constEnd();
+        for ( ; it != end; ++it) {
+            const MessageInfo *message(it.value().data());
+            accountMessages[message->accountId].append(message);
+        }
+
+        QList<QMailMessageId> messagesToRemove;
+
+        QHash<QMailAccountId, QList<const MessageInfo *> >::iterator ait = accountMessages.begin(), aend = accountMessages.end();
+        for ( ; ait != aend; ++ait) {
+            QList<const MessageInfo *> &messages(ait.value());
+            if (messages.count() > MaxNotificationsPerAccount) {
+                // Remove the notifications for the earliest messages for this account
+                std::sort(messages.begin(), messages.end(), MessageEarlierComparator());
+
+                int removeCount = messages.count() - MaxNotificationsPerAccount;
+                QList<const MessageInfo *>::const_iterator mit = messages.constBegin(), mend = mit + removeCount;
+                for ( ; mit != mend; ++mit) {
+                    messagesToRemove.append((*mit)->id);
+                }
+            }
+        }
+
+        foreach (const QMailMessageId &id, messagesToRemove) {
+            _publishedMessages.remove(id);
+        }
+    }
 
     // Remove any existing notifications whose message should no longer be published
     QList<QObject *> existingNotifications(Notification::notifications());
