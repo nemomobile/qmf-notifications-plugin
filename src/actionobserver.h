@@ -45,6 +45,7 @@
 
 // Qt
 #include <QObject>
+#include <QSharedPointer>
 
 class RunningAction : public QObject
 {
